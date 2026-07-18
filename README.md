@@ -1,6 +1,6 @@
 # Recall
 
-**Save anything, remember everything.** Personal memory for links — save pages from a Chrome extension, the web app, or a Telegram bot. AI summarizes and auto-tags every save; search your library later, or just ask the bot.
+**Save anything, remember everything.** Cross-platform link memory — Chrome extension, installable PWA, and Telegram bot, all feeding one library. AI summarizes and auto-tags every save, with Firecrawl web scraping pulling real page content for smarter results. Search it later, or just ask the bot.
 
 ![Next.js](https://img.shields.io/badge/Next.js%2015-black?logo=next.js) ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?logo=supabase&logoColor=white) ![WXT](https://img.shields.io/badge/WXT%20MV3-67d55e) ![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
 
