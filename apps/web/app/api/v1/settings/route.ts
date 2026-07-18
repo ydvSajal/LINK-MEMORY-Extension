@@ -4,10 +4,13 @@ import { json, handleError, parseJson } from '@/lib/api';
 
 export const runtime = 'nodejs';
 
+// OpenRouter is always primary, Gemini always fallback — each has its own
+// key/model, both optional, both may be saved at once.
 const SettingsInput = z.object({
-  ai_provider: z.enum(['openrouter', 'gemini']),
-  ai_model: z.string().trim().max(200).nullable(),
-  ai_api_key: z.string().trim().max(500).nullable(),
+  openrouter_model: z.string().trim().max(200).nullable().optional(),
+  openrouter_api_key: z.string().trim().max(500).optional(), // '' = keep existing, explicit null-ish not needed (send '' to clear via separate flag below)
+  gemini_model: z.string().trim().max(200).nullable().optional(),
+  gemini_api_key: z.string().trim().max(500).optional(),
 });
 
 // GET /api/v1/settings — the caller's settings (defaults when unset).
@@ -16,14 +19,14 @@ export async function GET(req: Request) {
     const { user, db } = await requireUser(req);
     const { data } = await db
       .from('user_settings')
-      .select('ai_provider, ai_model, ai_api_key, telegram_chat_id, telegram_link_code')
+      .select('openrouter_model, openrouter_api_key, gemini_model, gemini_api_key, telegram_chat_id, telegram_link_code')
       .eq('user_id', user.id)
       .maybeSingle();
     return json({
-      ai_provider: data?.ai_provider ?? 'openrouter',
-      ai_model: data?.ai_model ?? null,
-      // Never echo the full key back; a boolean is all the UI needs.
-      has_api_key: Boolean(data?.ai_api_key),
+      openrouter_model: data?.openrouter_model ?? null,
+      has_openrouter_key: Boolean(data?.openrouter_api_key),
+      gemini_model: data?.gemini_model ?? null,
+      has_gemini_key: Boolean(data?.gemini_api_key),
       telegram_linked: Boolean(data?.telegram_chat_id),
       telegram_link_code: data?.telegram_link_code ?? null,
     });
@@ -32,20 +35,18 @@ export async function GET(req: Request) {
   }
 }
 
-// PUT /api/v1/settings — upsert AI provider/model/key.
+// PUT /api/v1/settings — upsert either/both providers' model + key.
+// Empty-string key = keep existing (don't overwrite with blank).
 export async function PUT(req: Request) {
   try {
     const { user, db } = await requireUser(req);
     const body = SettingsInput.parse(await parseJson(req));
 
-    const row: Record<string, unknown> = {
-      user_id: user.id,
-      ai_provider: body.ai_provider,
-      ai_model: body.ai_model || null,
-      updated_at: new Date().toISOString(),
-    };
-    // Empty string = keep existing key; explicit null = clear it.
-    if (body.ai_api_key !== '') row.ai_api_key = body.ai_api_key;
+    const row: Record<string, unknown> = { user_id: user.id, updated_at: new Date().toISOString() };
+    if (body.openrouter_model !== undefined) row.openrouter_model = body.openrouter_model || null;
+    if (body.openrouter_api_key !== undefined && body.openrouter_api_key !== '') row.openrouter_api_key = body.openrouter_api_key;
+    if (body.gemini_model !== undefined) row.gemini_model = body.gemini_model || null;
+    if (body.gemini_api_key !== undefined && body.gemini_api_key !== '') row.gemini_api_key = body.gemini_api_key;
 
     const { error } = await db.from('user_settings').upsert(row, { onConflict: 'user_id' });
     if (error) return json({ error: error.message }, 500);

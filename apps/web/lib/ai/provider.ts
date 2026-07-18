@@ -5,11 +5,14 @@ import type { z } from 'zod';
 
 // provider.ts — the ONLY file that knows about AI providers.
 
-/** Per-user override from user_settings; falls back to env chain when absent. */
+/**
+ * Per-user override from user_settings. Both providers can have a key/model
+ * saved at once — OpenRouter is always tried first (primary), Gemini second
+ * (fallback), then the env chain. Either side may be absent.
+ */
 export type AiOverride = {
-  provider: 'openrouter' | 'gemini';
-  model: string | null;
-  apiKey: string | null;
+  openrouter?: { apiKey: string | null; model: string | null } | null;
+  gemini?: { apiKey: string | null; model: string | null } | null;
 };
 
 const ENV_CHAIN = [
@@ -28,24 +31,24 @@ function isRetriable(e: unknown): boolean {
   return /rate|timeout|429|5\d\d|overload|unavailable/.test(msg);
 }
 
-/** Build the model list to try, user override first, env chain as fallback. */
+/** Build the model list to try: OpenRouter (user key/model + env chain) first, Gemini (user key) as fallback. */
 function buildModels(override?: AiOverride | null): { model: LanguageModel; name: string }[] {
   const models: { model: LanguageModel; name: string }[] = [];
 
-  if (override?.provider === 'gemini' && override.apiKey) {
-    const google = createGoogleGenerativeAI({ apiKey: override.apiKey });
-    const name = override.model || DEFAULT_GEMINI_MODEL;
-    models.push({ model: google(name), name: `gemini:${name}` });
-  } else if (override?.provider === 'openrouter' && (override.model || override.apiKey)) {
-    const or = createOpenRouter({ apiKey: override.apiKey || process.env.OPENROUTER_API_KEY! });
-    const name = override.model || ENV_CHAIN[0];
-    if (name) models.push({ model: or(name), name: `openrouter:${name}` });
+  const orKey = override?.openrouter?.apiKey || process.env.OPENROUTER_API_KEY;
+  if (orKey) {
+    const or = createOpenRouter({ apiKey: orKey });
+    const orModel = override?.openrouter?.model;
+    const chain = orModel ? [orModel, ...ENV_CHAIN.filter((m) => m !== orModel)] : ENV_CHAIN;
+    for (const m of chain) models.push({ model: or(m), name: `openrouter:${m}` });
   }
 
-  if (process.env.OPENROUTER_API_KEY) {
-    const or = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
-    for (const m of ENV_CHAIN) models.push({ model: or(m), name: `openrouter:${m}` });
+  if (override?.gemini?.apiKey) {
+    const google = createGoogleGenerativeAI({ apiKey: override.gemini.apiKey });
+    const name = override.gemini.model || DEFAULT_GEMINI_MODEL;
+    models.push({ model: google(name), name: `gemini:${name}` });
   }
+
   return models;
 }
 

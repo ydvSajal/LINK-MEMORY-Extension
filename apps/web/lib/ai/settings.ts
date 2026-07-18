@@ -5,13 +5,12 @@ import type { AiOverride } from './provider';
 export async function loadAiOverride(db: SupabaseClient, userId: string): Promise<AiOverride | null> {
   const { data } = await db
     .from('user_settings')
-    .select('ai_provider, ai_model, ai_api_key')
+    .select('openrouter_api_key, openrouter_model, gemini_api_key, gemini_model')
     .eq('user_id', userId)
     .maybeSingle();
   if (!data) return null;
   return {
-    provider: data.ai_provider as AiOverride['provider'],
-    model: data.ai_model,
-    apiKey: data.ai_api_key,
+    openrouter: { apiKey: data.openrouter_api_key, model: data.openrouter_model },
+    gemini: { apiKey: data.gemini_api_key, model: data.gemini_model },
   };
 }
