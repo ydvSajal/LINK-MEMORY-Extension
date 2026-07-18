@@ -28,7 +28,6 @@ export function LoginPrompt() {
 
   return (
     <div className="center">
-      <h1>Recall</h1>
       <p className="muted">Log in to start saving.</p>
       <button className="mt" onClick={openLogin}>Log in on the web</button>
       <div className="mt">

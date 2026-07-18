@@ -57,8 +57,6 @@ export function SaveForm({ meta, onSaved }: { meta: PageMeta; onSaved: (s: Creat
 
   return (
     <div onKeyDown={onKey}>
-      <h1>Save to Recall</h1>
-
       <label>URL</label>
       <input value={meta.url} disabled />
 

@@ -26,9 +26,36 @@ export function App() {
     if (auth === 'in' && !meta) scrapeActiveTab().then(setMeta);
   }, [auth, meta]);
 
-  if (auth === 'loading') return <div className="center muted">Loading…</div>;
-  if (auth === 'out') return <LoginPrompt />;
-  if (saved) return <SavedCard initial={saved} onDone={() => window.close()} />;
-  if (!meta) return <div className="center muted">Reading page…</div>;
-  return <SaveForm meta={meta} onSaved={setSaved} />;
+  const openLibrary = () => {
+    chrome.windows.getCurrent().then((w) => {
+      if (w.id != null) chrome.sidePanel.open({ windowId: w.id }).then(() => window.close());
+    });
+  };
+
+  const body =
+    auth === 'loading' ? (
+      <div className="center muted">Loading…</div>
+    ) : auth === 'out' ? (
+      <LoginPrompt />
+    ) : saved ? (
+      <SavedCard initial={saved} onDone={() => window.close()} />
+    ) : !meta ? (
+      <div className="center muted">Reading page…</div>
+    ) : (
+      <SaveForm meta={meta} onSaved={setSaved} />
+    );
+
+  return (
+    <>
+      <div className="topbar">
+        <span className="brand">Recall</span>
+        {auth === 'in' && (
+          <button className="ghost" onClick={openLibrary}>
+            Library
+          </button>
+        )}
+      </div>
+      {body}
+    </>
+  );
 }

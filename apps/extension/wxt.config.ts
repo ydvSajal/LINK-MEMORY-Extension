@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: 'Recall — Save Anything',
     description: 'Save any page to your Recall memory in two clicks.',
-    permissions: ['activeTab', 'storage', 'contextMenus', 'scripting'],
+    permissions: ['activeTab', 'storage', 'contextMenus', 'scripting', 'sidePanel'],
     host_permissions: ['<all_urls>'],
     commands: {
       'save-page': {
