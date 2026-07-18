@@ -1,6 +1,7 @@
 import { requireUser, ApiError } from '@/lib/auth';
 import { json, handleError, attachTags } from '@/lib/api';
 import { enrich } from '@/lib/ai/enrich';
+import { loadAiOverride } from '@/lib/ai/settings';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // free models are slow
@@ -50,6 +51,7 @@ export async function POST(req: Request, { params }: Ctx) {
       url: save.url,
       pageText,
       existingTags,
+      override: await loadAiOverride(db, user.id),
     });
 
     await db

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.2.22",
     "@openrouter/ai-sdk-provider": "^0.7.0",
     "@recall/api-client": "workspace:*",
     "@recall/types": "workspace:*",

@@ -1,5 +1,5 @@
 import { EnrichResult } from '@recall/types';
-import { generateWithFallback } from './provider';
+import { generateWithFallback, type AiOverride } from './provider';
 
 const SYSTEM =
   'You organize a personal knowledge library. Given a saved web page, write a tight summary and assign tags. ' +
@@ -14,6 +14,7 @@ export type EnrichInput = {
   url: string;
   pageText?: string;
   existingTags: string[];
+  override?: AiOverride | null;
 };
 
 /** Summarize + auto-tag. Returns zod-validated JSON from the model chain. */
@@ -36,5 +37,6 @@ export async function enrich(input: EnrichInput) {
     schema: EnrichResult,
     system: SYSTEM,
     prompt: `${existing}\n\n---\n${content}`,
+    override: input.override,
   });
 }

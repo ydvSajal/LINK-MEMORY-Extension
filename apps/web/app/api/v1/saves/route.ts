@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { rateLimit } from '@/lib/ratelimit';
 import { json, handleError, parseJson, domainFromUrl, guessContentType, attachTags, serializeSave, querySaves, SAVE_SELECT } from '@/lib/api';
@@ -42,8 +43,8 @@ export async function POST(req: Request) {
 
     if (body.tags?.length) await attachTags(db, user.id, created.id, body.tags);
 
-    // Fire-and-forget enrichment — the card is already saved; enrichment updates it later.
-    triggerEnrich(created.id, token, body.page_text);
+    // Enrich after the response is sent; after() keeps the lambda alive on Vercel.
+    after(() => triggerEnrich(created.id, token, body.page_text));
 
     const { data: full } = await db.from('saves').select(SAVE_SELECT).eq('id', created.id).single();
     return json(serializeSave(full ?? created), 201);

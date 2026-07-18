@@ -134,9 +134,15 @@ export default function Board({
                     </div>
                   )}
                   <div className="mt-1 text-xs text-neutral-500">{items.length} saves loaded</div>
+                  <a
+                    href="/settings"
+                    className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"
+                  >
+                    Settings
+                  </a>
                   <button
                     onClick={signOut}
-                    className="mt-3 w-full rounded-lg border border-neutral-700 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
+                    className="mt-2 w-full rounded-lg border border-neutral-700 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
                   >
                     Sign out
                   </button>

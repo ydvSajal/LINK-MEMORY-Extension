@@ -121,17 +121,22 @@ export async function querySaves(
   return { items, next_cursor };
 }
 
-/** Keyword search over title/summary/note. Shared by GET /search and the grid. */
-export async function searchSaves(db: SupabaseClient, query: string): Promise<Save[]> {
+/**
+ * Keyword search over title/summary/note. Shared by GET /search and the grid.
+ * `userId` is required when db is the service-role client (no RLS scoping).
+ */
+export async function searchSaves(db: SupabaseClient, query: string, userId?: string): Promise<Save[]> {
   const term = query.trim();
   if (!term) return [];
   const like = `%${term.replace(/[%_]/g, '\\$&')}%`;
-  const { data, error } = await db
+  let q = db
     .from('saves')
     .select(SAVE_SELECT)
     .or(`title.ilike.${like},ai_summary.ilike.${like},note.ilike.${like}`)
     .order('created_at', { ascending: false })
     .limit(50);
+  if (userId) q = q.eq('user_id', userId);
+  const { data, error } = await q;
   if (error) throw new ApiError(500, error.message);
   return (data ?? []).map(serializeSave);
 }
