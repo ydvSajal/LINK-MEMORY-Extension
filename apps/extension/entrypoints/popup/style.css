@@ -1,0 +1,92 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #171717;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #6d28d9;
+  --card: #f9fafb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a;
+    --fg: #f5f5f5;
+    --muted: #9ca3af;
+    --border: #262626;
+    --accent: #a78bfa;
+    --card: #171717;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 360px;
+  font: 14px/1.4 system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+#root { padding: 14px; }
+
+h1 { font-size: 15px; margin: 0 0 10px; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+input, textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+textarea { resize: vertical; min-height: 52px; }
+input:disabled { color: var(--muted); }
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.55; cursor: default; }
+button.ghost { background: transparent; color: var(--accent); padding: 4px 6px; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.chip button { background: none; color: var(--muted); padding: 0; font-size: 13px; line-height: 1; }
+.suggest { color: var(--muted); border-style: dashed; cursor: pointer; }
+
+.card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--card); }
+.card img { width: 100%; height: 130px; object-fit: cover; display: block; }
+.card .body { padding: 10px 12px; }
+.card .domain { font-size: 11px; color: var(--muted); }
+.card .title { font-weight: 600; margin: 2px 0 6px; }
+.card .summary { font-size: 13px; color: var(--fg); }
+.shimmer {
+  color: var(--muted);
+  font-size: 13px;
+  background: linear-gradient(90deg, var(--muted) 25%, var(--fg) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+.error { color: #dc2626; font-size: 13px; margin-top: 8px; }
+.muted { color: var(--muted); }
+.center { text-align: center; padding: 24px 8px; }
+.mt { margin-top: 12px; }

@@ -1,0 +1,13 @@
+{
+  "name": "recall",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "dev:web": "pnpm --filter @recall/web dev",
+    "dev:ext": "pnpm --filter @recall/extension dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
