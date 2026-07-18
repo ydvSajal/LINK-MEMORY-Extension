@@ -1,5 +1,6 @@
 import { EnrichResult } from '@recall/types';
 import { generateWithFallback, type AiOverride } from './provider';
+import { firecrawlScrape } from './scrape';
 
 const SYSTEM =
   'You organize a personal knowledge library. Given a saved web page, write a tight summary and assign tags. ' +
@@ -15,16 +16,24 @@ export type EnrichInput = {
   pageText?: string;
   existingTags: string[];
   override?: AiOverride | null;
+  firecrawlKey?: string | null;
 };
 
 /** Summarize + auto-tag. Returns zod-validated JSON from the model chain. */
 export async function enrich(input: EnrichInput) {
+  // Thin page text (Telegram saves have none) → try Firecrawl for real content.
+  let pageText = input.pageText ?? '';
+  if (pageText.length < 500) {
+    const scraped = await firecrawlScrape(input.url, input.firecrawlKey);
+    if (scraped.length > pageText.length) pageText = scraped;
+  }
+
   const content = [
     `URL: ${input.url}`,
     input.title && `Title: ${input.title}`,
     input.description && `Description: ${input.description}`,
     input.note && `User note: ${input.note}`,
-    input.pageText && `Page text (excerpt):\n${input.pageText.slice(0, 3000)}`,
+    pageText && `Page text (excerpt):\n${pageText.slice(0, 3000)}`,
   ]
     .filter(Boolean)
     .join('\n');

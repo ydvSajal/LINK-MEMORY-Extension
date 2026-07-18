@@ -10,6 +10,7 @@ type Settings = {
   has_openrouter_key: boolean;
   gemini_model: string | null;
   has_gemini_key: boolean;
+  has_firecrawl_key: boolean;
   telegram_linked: boolean;
   telegram_link_code: string | null;
 };
@@ -148,6 +149,90 @@ function ProviderCard({
   );
 }
 
+function FirecrawlCard({ hasKey, authed, onSaved }: { hasKey: boolean; authed: Authed; onSaved: () => void }) {
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [testMsg, setTestMsg] = useState('');
+
+  const save = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      await authed('/settings', { method: 'PUT', body: JSON.stringify({ firecrawl_api_key: key.trim() }) });
+      setMsg('Saved.');
+      onSaved();
+      setKey('');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setTestMsg('');
+    try {
+      const d = (await authed('/settings/test', {
+        method: 'POST',
+        body: JSON.stringify({ provider: 'firecrawl', api_key: key.trim() || '' }),
+      })) as { ms: number };
+      setTestMsg(`Works — scraped a test page in ${(d.ms / 1000).toFixed(1)}s.`);
+    } catch (e) {
+      setTestMsg(`Failed: ${(e as Error).message}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+      <div className="flex items-center gap-2">
+        <h2 className="font-medium">Firecrawl</h2>
+        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs text-neutral-400">Web scraper</span>
+      </div>
+      <p className="mt-1 text-sm text-neutral-500">
+        When a save has little or no page text (Telegram saves, blocked pages), Firecrawl fetches the real content so
+        summaries and tags are much better. Free key at firecrawl.dev.
+      </p>
+
+      <label className="mt-4 block text-sm text-neutral-400">
+        API key {hasKey && <span className="text-neutral-600">(one is saved — type to replace)</span>}
+      </label>
+      <input
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        type="password"
+        placeholder="fc-… (firecrawl.dev, free tier)"
+        className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono"
+      />
+
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={busy || !key.trim()}
+          className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? '…' : 'Save'}
+        </button>
+        <button
+          onClick={test}
+          disabled={testing || (!key.trim() && !hasKey)}
+          className="rounded-lg border border-neutral-700 px-5 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
+        >
+          {testing ? 'Testing…' : 'Test API'}
+        </button>
+      </div>
+      {msg && <p className={`mt-2 text-sm ${msg === 'Saved.' ? 'text-emerald-400' : 'text-red-400'}`}>{msg}</p>}
+      {testMsg && (
+        <p className={`mt-2 text-sm ${testMsg.startsWith('Works') ? 'text-emerald-400' : 'text-red-400'}`}>{testMsg}</p>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const supabase = useMemo(() => browserClient(), []);
   const [s, setS] = useState<Settings | null>(null);
@@ -246,6 +331,12 @@ export default function SettingsPage() {
         savedModel={s.gemini_model}
         authed={authed}
         onSaved={(model, keySet) => setS((prev) => (prev ? { ...prev, gemini_model: model || null, has_gemini_key: keySet } : prev))}
+      />
+
+      <FirecrawlCard
+        hasKey={s.has_firecrawl_key}
+        authed={authed}
+        onSaved={() => setS((prev) => (prev ? { ...prev, has_firecrawl_key: true } : prev))}
       />
 
       <section className="mt-6 rounded-xl border border-neutral-800 p-5">

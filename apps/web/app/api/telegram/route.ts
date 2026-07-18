@@ -3,7 +3,7 @@ import { adminClient } from '@/lib/supabase/server';
 import { domainFromUrl, guessContentType, attachTags, searchSaves } from '@/lib/api';
 import { enrich } from '@/lib/ai/enrich';
 import { generateTextWithFallback } from '@/lib/ai/provider';
-import { loadAiOverride } from '@/lib/ai/settings';
+import { loadAiOverride, loadFirecrawlKey } from '@/lib/ai/settings';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -122,6 +122,7 @@ export async function POST(req: Request) {
             url,
             existingTags: (tagRows ?? []).map((t) => t.name),
             override: await loadAiOverride(db, userId),
+            firecrawlKey: await loadFirecrawlKey(db, userId),
           });
           await db
             .from('saves')

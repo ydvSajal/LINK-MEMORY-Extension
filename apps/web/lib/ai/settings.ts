@@ -14,3 +14,13 @@ export async function loadAiOverride(db: SupabaseClient, userId: string): Promis
     gemini: { apiKey: data.gemini_api_key, model: data.gemini_model },
   };
 }
+
+/** User's Firecrawl key (null = fall back to env FIRECRAWL_API_KEY, if any). */
+export async function loadFirecrawlKey(db: SupabaseClient, userId: string): Promise<string | null> {
+  const { data } = await db
+    .from('user_settings')
+    .select('firecrawl_api_key')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return data?.firecrawl_api_key ?? null;
+}

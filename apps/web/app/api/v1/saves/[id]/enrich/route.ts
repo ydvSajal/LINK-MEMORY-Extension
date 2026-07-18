@@ -1,7 +1,7 @@
 import { requireUser, ApiError } from '@/lib/auth';
 import { json, handleError, attachTags } from '@/lib/api';
 import { enrich } from '@/lib/ai/enrich';
-import { loadAiOverride } from '@/lib/ai/settings';
+import { loadAiOverride, loadFirecrawlKey } from '@/lib/ai/settings';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // free models are slow
@@ -52,6 +52,7 @@ export async function POST(req: Request, { params }: Ctx) {
       pageText,
       existingTags,
       override: await loadAiOverride(db, user.id),
+      firecrawlKey: await loadFirecrawlKey(db, user.id),
     });
 
     await db

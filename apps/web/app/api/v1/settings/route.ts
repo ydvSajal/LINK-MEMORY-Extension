@@ -11,6 +11,7 @@ const SettingsInput = z.object({
   openrouter_api_key: z.string().trim().max(500).optional(), // '' = keep existing, explicit null-ish not needed (send '' to clear via separate flag below)
   gemini_model: z.string().trim().max(200).nullable().optional(),
   gemini_api_key: z.string().trim().max(500).optional(),
+  firecrawl_api_key: z.string().trim().max(500).optional(),
 });
 
 // GET /api/v1/settings — the caller's settings (defaults when unset).
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
     const { user, db } = await requireUser(req);
     const { data } = await db
       .from('user_settings')
-      .select('openrouter_model, openrouter_api_key, gemini_model, gemini_api_key, telegram_chat_id, telegram_link_code')
+      .select('openrouter_model, openrouter_api_key, gemini_model, gemini_api_key, firecrawl_api_key, telegram_chat_id, telegram_link_code')
       .eq('user_id', user.id)
       .maybeSingle();
     return json({
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
       has_openrouter_key: Boolean(data?.openrouter_api_key),
       gemini_model: data?.gemini_model ?? null,
       has_gemini_key: Boolean(data?.gemini_api_key),
+      has_firecrawl_key: Boolean(data?.firecrawl_api_key),
       telegram_linked: Boolean(data?.telegram_chat_id),
       telegram_link_code: data?.telegram_link_code ?? null,
     });
@@ -47,6 +49,7 @@ export async function PUT(req: Request) {
     if (body.openrouter_api_key !== undefined && body.openrouter_api_key !== '') row.openrouter_api_key = body.openrouter_api_key;
     if (body.gemini_model !== undefined) row.gemini_model = body.gemini_model || null;
     if (body.gemini_api_key !== undefined && body.gemini_api_key !== '') row.gemini_api_key = body.gemini_api_key;
+    if (body.firecrawl_api_key !== undefined && body.firecrawl_api_key !== '') row.firecrawl_api_key = body.firecrawl_api_key;
 
     const { error } = await db.from('user_settings').upsert(row, { onConflict: 'user_id' });
     if (error) return json({ error: error.message }, 500);
