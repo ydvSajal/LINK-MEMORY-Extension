@@ -31,6 +31,8 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState<Settings['ai_provider']>('openrouter');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [testMsg, setTestMsg] = useState('');
+  const [testing, setTesting] = useState(false);
   const [bot, setBot] = useState<BotStatus | null>(null);
   const [botToken, setBotToken] = useState('');
   const [botMsg, setBotMsg] = useState('');
@@ -79,6 +81,26 @@ export default function SettingsPage() {
       setBotMsg((e as Error).message);
     } finally {
       setBotBusy(false);
+    }
+  };
+
+  const testApi = async () => {
+    setTesting(true);
+    setTestMsg('');
+    try {
+      const d = (await authed('/settings/test', {
+        method: 'POST',
+        body: JSON.stringify({
+          ai_provider: provider,
+          ai_model: model.trim() || null,
+          ai_api_key: key.trim() || '', // '' = test with the saved key
+        }),
+      })) as { model: string; ms: number };
+      setTestMsg(`Works — ${d.model} answered in ${(d.ms / 1000).toFixed(1)}s.`);
+    } catch (e) {
+      setTestMsg(`Failed: ${(e as Error).message}`);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -179,13 +201,25 @@ export default function SettingsPage() {
           <p className="mt-2 text-xs text-amber-400">Gemini needs your own API key (free at aistudio.google.com/apikey).</p>
         )}
 
-        <button
-          onClick={save}
-          disabled={busy}
-          className="mt-4 rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {busy ? '…' : 'Save settings'}
-        </button>
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            onClick={save}
+            disabled={busy}
+            className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {busy ? '…' : 'Save settings'}
+          </button>
+          <button
+            onClick={testApi}
+            disabled={testing}
+            className="rounded-lg border border-neutral-700 px-5 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
+          >
+            {testing ? 'Testing…' : 'Test API'}
+          </button>
+        </div>
+        {testMsg && (
+          <p className={`mt-2 text-sm ${testMsg.startsWith('Works') ? 'text-emerald-400' : 'text-red-400'}`}>{testMsg}</p>
+        )}
       </section>
 
       <section className="mt-6 rounded-xl border border-neutral-800 p-5">

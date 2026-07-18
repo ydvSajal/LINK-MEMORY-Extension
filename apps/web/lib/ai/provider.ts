@@ -79,6 +79,19 @@ export async function generateWithFallback<T>(opts: {
   throw new Error(`all models in chain failed: ${(lastErr as Error)?.message ?? lastErr}`);
 }
 
+/**
+ * Test exactly one model (the override if given, else the first env-chain
+ * model) with NO fallback — so a broken key/model fails loudly instead of
+ * being masked by the chain. Returns the model name that answered.
+ */
+export async function testModel(override?: AiOverride | null): Promise<string> {
+  const models = buildModels(override);
+  if (models.length === 0) throw new Error('no AI models configured');
+  const { model, name } = models[0];
+  await generateText({ model, prompt: 'Reply with exactly: ok' });
+  return name;
+}
+
 /** Plain-text generation with the same fallback chain (Telegram Q&A). */
 export async function generateTextWithFallback(opts: {
   prompt: string;

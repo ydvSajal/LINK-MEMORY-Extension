@@ -11,7 +11,12 @@ const BotInput = z.object({
   telegram_bot_token: z.string().trim().max(200),
 });
 
-const appUrl = () => process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+// Derive the public HTTPS origin from the request itself (Vercel sets
+// x-forwarded-host/proto), so no NEXT_PUBLIC_APP_URL env var is needed.
+function appUrl(req: Request) {
+  const host = req.headers.get('x-forwarded-host') ?? new URL(req.url).host;
+  return `https://${host}`;
+}
 
 // GET — whether a bot token is configured + whether the webhook is registered.
 export async function GET(req: Request) {
@@ -41,7 +46,8 @@ export async function PUT(req: Request) {
 
     if (token) {
       const secret = crypto.randomUUID().replace(/-/g, '');
-      const url = `${appUrl()}/api/telegram`;
+      const url = `${appUrl(req)}/api/telegram`;
+      if (url.includes('localhost')) return json({ error: 'Telegram needs a public HTTPS URL — register from the deployed site, not localhost.' }, 400);
       const r = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
