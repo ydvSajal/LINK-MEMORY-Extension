@@ -54,6 +54,9 @@ importers:
       '@openrouter/ai-sdk-provider':
         specifier: ^0.7.0
         version: 0.7.5(ai@4.3.19(react@19.2.7)(zod@3.25.76))(zod@3.25.76)
+      '@recall/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@recall/types':
         specifier: workspace:*
         version: link:../../packages/types

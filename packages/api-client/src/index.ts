@@ -41,7 +41,7 @@ export class RecallClient {
     return this.req('/saves', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  listSaves(params: { limit?: number; cursor?: string; tag?: string; type?: string } = {}): Promise<SaveList> {
+  listSaves(params: { limit?: number; cursor?: string; tag?: string; type?: string; source?: string } = {}): Promise<SaveList> {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v != null) qs.set(k, String(v));
     const q = qs.toString();

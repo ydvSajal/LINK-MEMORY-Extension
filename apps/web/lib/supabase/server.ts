@@ -1,7 +1,31 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+/**
+ * Cookie-scoped client for Server Components / route handlers — reads the
+ * logged-in web session from cookies and runs under that user's RLS policies.
+ * Cookie writes are wrapped in try/catch: refreshing a token from a Server
+ * Component throws (RSCs can't set cookies), which is safe to ignore here.
+ */
+export async function cookieClient(): Promise<SupabaseClient> {
+  const store = await cookies();
+  return createServerClient(url, anonKey, {
+    cookies: {
+      getAll: () => store.getAll(),
+      setAll: (list: { name: string; value: string; options?: Record<string, unknown> }[]) => {
+        try {
+          list.forEach(({ name, value, options }) => store.set(name, value, options));
+        } catch {
+          /* called from a Server Component — ignore */
+        }
+      },
+    },
+  });
+}
 
 /**
  * Client scoped to a user's access token — every query runs under that user's

@@ -1,9 +1,41 @@
-export default function Home() {
-  // ponytail: Stage 1 placeholder. Card grid arrives in Stage 2.
+import { redirect } from 'next/navigation';
+import { cookieClient } from '@/lib/supabase/server';
+import { querySaves, searchSaves, queryTags } from '@/lib/api';
+import Board from './board';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic'; // per-user, cookie-scoped — never cache
+
+type SP = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
+
+export default async function Home({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const tag = one(sp.tag);
+  const type = one(sp.type);
+  const source = one(sp.source);
+  const q = one(sp.q);
+
+  const db = await cookieClient();
+  const {
+    data: { user },
+  } = await db.auth.getUser();
+  if (!user) redirect('/login');
+
+  const tags = await queryTags(db);
+  const searching = Boolean(q && q.trim());
+  const list = searching
+    ? { items: await searchSaves(db, q!), next_cursor: null }
+    : await querySaves(db, { tag, type, source });
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-3 p-8 text-center">
-      <h1 className="text-3xl font-semibold">Recall</h1>
-      <p className="text-neutral-400">Save anything, remember everything.</p>
-    </main>
+    <Board
+      // Reset client state whenever the filter/search changes.
+      key={`${tag}|${type}|${source}|${q}`}
+      initialItems={list.items}
+      initialCursor={list.next_cursor}
+      tags={tags}
+      filters={{ tag, type, source, q: q ?? '' }}
+    />
   );
 }

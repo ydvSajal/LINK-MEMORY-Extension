@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import { rateLimit } from '@/lib/ratelimit';
-import { json, handleError, parseJson, domainFromUrl, guessContentType, attachTags, serializeSave, SAVE_SELECT } from '@/lib/api';
+import { json, handleError, parseJson, domainFromUrl, guessContentType, attachTags, serializeSave, querySaves, SAVE_SELECT } from '@/lib/api';
 import { triggerEnrich } from '@/lib/ai/trigger';
 import { CreateSaveInput } from '@recall/types';
 
@@ -52,37 +52,21 @@ export async function POST(req: Request) {
   }
 }
 
-// GET /api/v1/saves?limit=&cursor=&tag=&type=
+// GET /api/v1/saves?limit=&cursor=&tag=&type=&source=
 export async function GET(req: Request) {
   try {
     const { user, db } = await requireUser(req);
     rateLimit(user.id);
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Number(searchParams.get('limit')) || 20, 50);
-    const cursor = searchParams.get('cursor');
-    const tag = searchParams.get('tag');
-    const type = searchParams.get('type');
-
-    let q = db.from('saves').select(SAVE_SELECT).order('created_at', { ascending: false }).limit(limit);
-    if (cursor) q = q.lt('created_at', cursor);
-    if (type) q = q.eq('content_type', type);
-    if (tag) {
-      // saves that have this tag — resolve tag id first (RLS-scoped)
-      const { data: tagRow } = await db.from('tags').select('id').eq('name', tag).maybeSingle();
-      if (!tagRow) return json({ items: [], next_cursor: null });
-      const { data: links } = await db.from('save_tags').select('save_id').eq('tag_id', tagRow.id);
-      const ids = (links ?? []).map((l) => l.save_id);
-      if (ids.length === 0) return json({ items: [], next_cursor: null });
-      q = q.in('id', ids);
-    }
-
-    const { data, error } = await q;
-    if (error) return json({ error: error.message }, 500);
-
-    const items = (data ?? []).map(serializeSave);
-    const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
-    return json({ items, next_cursor });
+    const result = await querySaves(db, {
+      limit: Number(searchParams.get('limit')) || 20,
+      cursor: searchParams.get('cursor'),
+      tag: searchParams.get('tag'),
+      type: searchParams.get('type'),
+      source: searchParams.get('source'),
+    });
+    return json(result);
   } catch (e) {
     return handleError(e);
   }

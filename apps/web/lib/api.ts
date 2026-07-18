@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ApiError } from './auth';
-import type { Save, ContentType } from '@recall/types';
+import type { Save, ContentType, TagCount } from '@recall/types';
 
 export function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
@@ -81,3 +81,69 @@ export function serializeSave(row: SaveRow): Save {
 /** The select string that pulls a save with its tag names in one query. */
 export const SAVE_SELECT =
   '*, save_tags(tags(name))';
+
+export type SaveQuery = {
+  limit?: number;
+  cursor?: string | null;
+  tag?: string | null;
+  type?: string | null;
+  source?: string | null;
+};
+
+/**
+ * List a user's saves (newest first) with cursor pagination and optional
+ * tag/content_type/source filters. Runs under the caller's RLS-scoped client.
+ * Shared by GET /saves and the website's server-rendered grid.
+ */
+export async function querySaves(
+  db: SupabaseClient,
+  p: SaveQuery,
+): Promise<{ items: Save[]; next_cursor: string | null }> {
+  const limit = Math.min(p.limit ?? 20, 50);
+  let q = db.from('saves').select(SAVE_SELECT).order('created_at', { ascending: false }).limit(limit);
+  if (p.cursor) q = q.lt('created_at', p.cursor);
+  if (p.type) q = q.eq('content_type', p.type);
+  if (p.source) q = q.eq('source', p.source);
+  if (p.tag) {
+    // saves that have this tag — resolve tag id first (RLS-scoped)
+    const { data: tagRow } = await db.from('tags').select('id').eq('name', p.tag).maybeSingle();
+    if (!tagRow) return { items: [], next_cursor: null };
+    const { data: links } = await db.from('save_tags').select('save_id').eq('tag_id', tagRow.id);
+    const ids = (links ?? []).map((l) => l.save_id);
+    if (ids.length === 0) return { items: [], next_cursor: null };
+    q = q.in('id', ids);
+  }
+
+  const { data, error } = await q;
+  if (error) throw new ApiError(500, error.message);
+  const items = (data ?? []).map(serializeSave);
+  const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
+  return { items, next_cursor };
+}
+
+/** Keyword search over title/summary/note. Shared by GET /search and the grid. */
+export async function searchSaves(db: SupabaseClient, query: string): Promise<Save[]> {
+  const term = query.trim();
+  if (!term) return [];
+  const like = `%${term.replace(/[%_]/g, '\\$&')}%`;
+  const { data, error } = await db
+    .from('saves')
+    .select(SAVE_SELECT)
+    .or(`title.ilike.${like},ai_summary.ilike.${like},note.ilike.${like}`)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw new ApiError(500, error.message);
+  return (data ?? []).map(serializeSave);
+}
+
+/** A user's tags with usage counts, most-used first. Shared by GET /tags and the grid. */
+export async function queryTags(db: SupabaseClient): Promise<TagCount[]> {
+  const { data, error } = await db.from('tags').select('name, save_tags(count)');
+  if (error) throw new ApiError(500, error.message);
+  return (data ?? [])
+    .map((t: { name: string; save_tags: { count: number }[] }) => ({
+      name: t.name,
+      count: t.save_tags?.[0]?.count ?? 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
