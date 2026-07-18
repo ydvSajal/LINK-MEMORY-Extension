@@ -16,11 +16,13 @@ export default function Board({
   initialCursor,
   tags,
   filters,
+  profile,
 }: {
   initialItems: Save[];
   initialCursor: string | null;
   tags: TagCount[];
   filters: Filters;
+  profile: { email: string; since: string | undefined };
 }) {
   const router = useRouter();
   const supabase = useMemo(() => browserClient(), []);
@@ -39,6 +41,7 @@ export default function Board({
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Save | null>(null);
   const [search, setSearch] = useState(filters.q);
+  const [menuOpen, setMenuOpen] = useState(false);
   const searching = Boolean(filters.q.trim());
 
   const pushFilters = useCallback(
@@ -112,9 +115,35 @@ export default function Board({
             placeholder="Search your memory…"
             className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm outline-none focus:border-violet-500"
           />
-          <button onClick={signOut} className="text-sm text-neutral-400 hover:text-neutral-200">
-            Sign out
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Profile menu"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-sm font-semibold uppercase"
+            >
+              {profile.email.charAt(0) || '?'}
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-10 z-20 w-64 rounded-xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl">
+                  <div className="truncate text-sm font-medium">{profile.email}</div>
+                  {profile.since && (
+                    <div className="mt-1 text-xs text-neutral-500">
+                      Member since {new Date(profile.since).toLocaleDateString()}
+                    </div>
+                  )}
+                  <div className="mt-1 text-xs text-neutral-500">{items.length} saves loaded</div>
+                  <button
+                    onClick={signOut}
+                    className="mt-3 w-full rounded-lg border border-neutral-700 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {!searching && (

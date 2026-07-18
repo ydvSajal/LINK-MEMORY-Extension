@@ -36,6 +36,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<SP>
       initialCursor={list.next_cursor}
       tags={tags}
       filters={{ tag, type, source, q: q ?? '' }}
+      profile={{ email: user.email ?? '', since: user.created_at }}
     />
   );
 }

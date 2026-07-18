@@ -45,8 +45,10 @@ function LoginInner() {
   const submit = async () => {
     setBusy(true);
     setErr('');
-    const fn = mode === 'in' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-    const { error } = await fn({ email, password });
+    const { error } =
+      mode === 'in'
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
     if (error) setErr(error.message);
     setBusy(false);
   };
