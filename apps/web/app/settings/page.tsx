@@ -21,6 +21,8 @@ const MODEL_HINTS: Record<Settings['ai_provider'], string[]> = {
   gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
 };
 
+type BotStatus = { has_bot_token: boolean; webhook_registered: boolean };
+
 export default function SettingsPage() {
   const supabase = useMemo(() => browserClient(), []);
   const [s, setS] = useState<Settings | null>(null);
@@ -29,6 +31,10 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState<Settings['ai_provider']>('openrouter');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [bot, setBot] = useState<BotStatus | null>(null);
+  const [botToken, setBotToken] = useState('');
+  const [botMsg, setBotMsg] = useState('');
+  const [botBusy, setBotBusy] = useState(false);
 
   const authed = useCallback(
     async (path: string, init?: RequestInit) => {
@@ -55,7 +61,26 @@ export default function SettingsPage() {
         setModel(d.ai_model ?? '');
       })
       .catch((e) => setMsg(e.message));
+    authed('/settings/telegram-bot').then(setBot).catch(() => {});
   }, [authed]);
+
+  const saveBotToken = async (token: string) => {
+    setBotBusy(true);
+    setBotMsg('');
+    try {
+      const d = (await authed('/settings/telegram-bot', {
+        method: 'PUT',
+        body: JSON.stringify({ telegram_bot_token: token }),
+      })) as { webhook_registered: boolean };
+      setBot({ has_bot_token: Boolean(token), webhook_registered: d.webhook_registered });
+      setBotMsg(token ? 'Bot registered — webhook is live.' : 'Bot disabled.');
+      setBotToken('');
+    } catch (e) {
+      setBotMsg((e as Error).message);
+    } finally {
+      setBotBusy(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -164,7 +189,43 @@ export default function SettingsPage() {
       </section>
 
       <section className="mt-6 rounded-xl border border-neutral-800 p-5">
-        <h2 className="font-medium">Telegram</h2>
+        <h2 className="font-medium">Telegram bot</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Paste your bot token (from @BotFather) — saving it registers the webhook automatically, no Vercel dashboard needed.
+        </p>
+        {bot?.webhook_registered ? (
+          <p className="mt-3 text-sm text-emerald-400">Bot registered and live.</p>
+        ) : null}
+        <div className="mt-3 flex gap-2">
+          <input
+            value={botToken}
+            onChange={(e) => setBotToken(e.target.value)}
+            type="password"
+            placeholder={bot?.has_bot_token ? 'token saved — type to replace' : '123456:ABC-DEF… (from @BotFather)'}
+            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono"
+          />
+          <button
+            onClick={() => saveBotToken(botToken.trim())}
+            disabled={botBusy || !botToken.trim()}
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {botBusy ? '…' : 'Register'}
+          </button>
+        </div>
+        {bot?.has_bot_token && (
+          <button
+            onClick={() => saveBotToken('')}
+            disabled={botBusy}
+            className="mt-2 text-xs text-neutral-500 hover:text-red-400"
+          >
+            Disable bot
+          </button>
+        )}
+        {botMsg && <p className={`mt-2 text-sm ${botMsg.includes('live') || botMsg.includes('disabled') ? 'text-emerald-400' : 'text-red-400'}`}>{botMsg}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+        <h2 className="font-medium">Telegram account link</h2>
         {s.telegram_linked ? (
           <p className="mt-1 text-sm text-emerald-400">Linked. Send any link to the bot to save it, or ask it about your saves.</p>
         ) : (
