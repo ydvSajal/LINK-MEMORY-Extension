@@ -154,6 +154,13 @@ export default function Board({
 
         {!searching && (
           <div className="mx-auto flex max-w-6xl flex-wrap gap-1.5 px-4 pb-3">
+            <Chip
+              active={!filters.tag && !filters.type && !filters.source}
+              onClick={() => pushFilters({ tag: null, type: null, source: null, q: '' })}
+            >
+              All
+            </Chip>
+            <span className="mx-1 self-center text-neutral-700">·</span>
             {TYPES.map((t) => (
               <Chip key={t} active={filters.type === t} onClick={() => toggle('type', t)}>
                 {t}
@@ -289,6 +296,8 @@ function Summary({ save }: { save: Save }) {
         <span aria-hidden>✦ </span>Summarizing…
       </p>
     );
+  if (save.ai_status === 'failed')
+    return <p className="mt-1.5 text-xs text-neutral-600">Summary unavailable — check AI keys in Settings.</p>;
   if (save.description) return <p className="mt-1.5 line-clamp-3 text-xs text-neutral-400">{save.description}</p>;
   return null;
 }
