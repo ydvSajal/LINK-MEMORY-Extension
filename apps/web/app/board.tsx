@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { RecallClient } from '@recall/api-client';
 import type { Save, TagCount } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
+import Nav from './nav';
 
 type Filters = { tag: string | null; type: string | null; source: string | null; q: string };
 
@@ -109,6 +110,7 @@ export default function Board({
       <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
           <span className="text-lg font-semibold">Recall</span>
+          <Nav />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -134,12 +136,6 @@ export default function Board({
                     </div>
                   )}
                   <div className="mt-1 text-xs text-neutral-500">{items.length} saves loaded</div>
-                  <a
-                    href="/todos"
-                    className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"
-                  >
-                    To-dos
-                  </a>
                   <a
                     href="/settings"
                     className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"

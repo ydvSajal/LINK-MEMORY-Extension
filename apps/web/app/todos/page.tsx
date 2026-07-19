@@ -14,9 +14,12 @@ export default async function TodosPage() {
 
   const { data } = await db
     .from('todos')
-    .select('id, text, due_date, done, created_at')
+    .select('id, text, due_date, done, status, created_at')
     .order('done', { ascending: true })
     .order('created_at', { ascending: false });
 
-  return <Todos initial={data ?? []} />;
+  const name =
+    (user.user_metadata?.full_name as string | undefined) ?? user.email?.split('@')[0] ?? 'there';
+
+  return <Todos initial={data ?? []} name={name} />;
 }
