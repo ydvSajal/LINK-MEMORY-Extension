@@ -35,21 +35,42 @@ const HELP =
   '• /done <n> — mark to-do n as done\n' +
   '• /link <code> — connect your account (code from Settings on the site)';
 
-// "/todo buy milk 2026-07-25" or "... tomorrow"/"today" → { text, due_date|null }.
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+// Natural due-date parsing: ISO, today/tomorrow, "in 3 days", "23rd" /
+// "on the 23rd", "23 of this|next month", weekday names. The matched phrase is
+// stripped from the task text.
+// ponytail: dates are computed in the server's timezone — swap in the user's tz if that ever bites.
 function parseTodo(raw: string): { text: string; due: string | null } {
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
   let due: string | null = null;
   let text = raw;
-  const m = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  if (m) {
-    due = m[1];
-    text = raw.replace(m[1], '');
-  } else if (/\btomorrow\b/i.test(raw)) {
-    due = iso(new Date(Date.now() + 86_400_000));
-    text = raw.replace(/\btomorrow\b/i, '');
-  } else if (/\btoday\b/i.test(raw)) {
-    due = iso(new Date());
-    text = raw.replace(/\btoday\b/i, '');
+  const take = (matched: string, d: Date | string) => {
+    due = typeof d === 'string' ? d : iso(d);
+    text = raw.replace(matched, ' ');
+  };
+
+  let m: RegExpMatchArray | null;
+  if ((m = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/))) {
+    take(m[0], m[1]);
+  } else if ((m = raw.match(/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(this|next)\s+month\b/i))) {
+    take(m[0], new Date(now.getFullYear(), now.getMonth() + (m[2].toLowerCase() === 'next' ? 1 : 0), +m[1]));
+  } else if ((m = raw.match(/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/i))) {
+    // bare ordinal → this month, or next month if that day already passed
+    let d = new Date(now.getFullYear(), now.getMonth(), +m[1]);
+    if (iso(d) < iso(now)) d = new Date(now.getFullYear(), now.getMonth() + 1, +m[1]);
+    take(m[0], d);
+  } else if ((m = raw.match(/\bin\s+(\d+)\s+days?\b/i))) {
+    take(m[0], new Date(now.getFullYear(), now.getMonth(), now.getDate() + +m[1]));
+  } else if ((m = raw.match(/\btomorrow\b/i))) {
+    take(m[0], new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  } else if ((m = raw.match(/\btoday\b/i))) {
+    take(m[0], now);
+  } else if ((m = raw.match(/\b(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i))) {
+    const ahead = (WEEKDAYS.indexOf(m[1].toLowerCase()) - now.getDay() + 7) % 7 || 7;
+    take(m[0], new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
   }
   return { text: text.replace(/\s+/g, ' ').trim(), due };
 }
@@ -62,7 +83,12 @@ async function looksLikeTask(
 ): Promise<boolean> {
   if (text.endsWith('?')) return false;
   if (/^(what|who|when|where|why|how|which|did|do i|have i|find|search|show)\b/i.test(text)) return false;
-  if (/\b(\d{4}-\d{2}-\d{2}|today|tomorrow)\b/i.test(text)) return true;
+  if (
+    /\b(\d{4}-\d{2}-\d{2}|today|tomorrow|in \d+ days?|\d{1,2}(st|nd|rd|th)|\d{1,2} of (this|next) month|next (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i.test(
+      text,
+    )
+  )
+    return true;
   if (/^(remind( me)?( to)?|buy|call|pay|send|book|schedule|finish|submit|email|fix|do|todo|task:?)\b/i.test(text))
     return true;
   try {
