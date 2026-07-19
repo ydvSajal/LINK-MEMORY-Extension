@@ -129,6 +129,18 @@ button.ghost.danger:hover { color: var(--danger); }
   color: var(--muted);
 }
 .lcard-meta img { border-radius: 3px; }
+.lcard-x {
+  margin-left: auto;
+  background: none;
+  color: var(--muted);
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.lcard:hover .lcard-x, .lcard-x:focus-visible { opacity: 1; }
+.lcard-x:hover { color: var(--danger); }
 .dot-sep { color: var(--border); }
 .lcard-title {
   display: block;

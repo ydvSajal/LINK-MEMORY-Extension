@@ -7,7 +7,12 @@ import type { Save, TagCount } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
 import Sidebar, { TYPES, SOURCES } from './sidebar';
 
-type Filters = { tag: string | null; type: string | null; source: string | null; q: string };
+type Filters = { tag: string | null; type: string | null; source: string | null; q: string; bin: boolean };
+
+const BIN_DAYS = 2;
+
+const daysLeft = (deletedAt: string) =>
+  Math.max(0, Math.ceil((new Date(deletedAt).getTime() + BIN_DAYS * 86_400_000 - Date.now()) / 86_400_000));
 
 const age = (iso: string) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -55,6 +60,8 @@ export default function Board({
       const p = new URLSearchParams();
       if (f.q.trim()) {
         p.set('q', f.q.trim());
+      } else if (f.bin) {
+        p.set('bin', '1');
       } else {
         if (f.tag) p.set('tag', f.tag);
         if (f.type) p.set('type', f.type);
@@ -68,7 +75,7 @@ export default function Board({
   // Debounced search → URL. Search and filters are mutually exclusive server-side.
   useEffect(() => {
     if (search === filters.q) return;
-    const t = setTimeout(() => pushFilters({ tag: null, type: null, source: null, q: search }), 350);
+    const t = setTimeout(() => pushFilters({ tag: null, type: null, source: null, q: search, bin: false }), 350);
     return () => clearTimeout(t);
   }, [search, filters.q, pushFilters]);
 
@@ -84,6 +91,38 @@ export default function Board({
     return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // Live updates: Telegram saves and AI enrichment land while the page is open.
+  // Any change to my saves → refetch the first page (RLS scopes the channel).
+  useEffect(() => {
+    if (searching) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const channel = supabase
+      .channel('saves-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saves' }, () => {
+        clearTimeout(timer); // events come in bursts (insert, then enrich update)
+        timer = setTimeout(async () => {
+          try {
+            const res = await client.listSaves({
+              limit: 20,
+              tag: filters.tag ?? undefined,
+              type: filters.type ?? undefined,
+              source: filters.source ?? undefined,
+              bin: filters.bin || undefined,
+            });
+            setItems(res.items);
+            setCursor(res.next_cursor);
+          } catch {
+            /* next event retries */
+          }
+        }, 400);
+      })
+      .subscribe();
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, client, searching, filters]);
+
   const toggle = (key: 'tag' | 'type' | 'source', val: string) =>
     pushFilters({ ...filters, q: '', [key]: filters[key] === val ? null : val });
 
@@ -97,6 +136,7 @@ export default function Board({
         tag: filters.tag ?? undefined,
         type: filters.type ?? undefined,
         source: filters.source ?? undefined,
+        bin: filters.bin || undefined,
       });
       setItems((prev) => [...prev, ...res.items]);
       setCursor(res.next_cursor);
@@ -107,6 +147,37 @@ export default function Board({
       setLoading(false);
     }
   }, [client, cursor, loading, searching, filters]);
+
+  const softDelete = async (id: string) => {
+    const prev = items;
+    setItems((p) => p.filter((i) => i.id !== id));
+    try {
+      await client.deleteSave(id);
+    } catch {
+      setItems(prev);
+    }
+  };
+
+  const restore = async (id: string) => {
+    const prev = items;
+    setItems((p) => p.filter((i) => i.id !== id));
+    try {
+      await client.restoreSave(id);
+    } catch {
+      setItems(prev);
+    }
+  };
+
+  const hardDelete = async (id: string) => {
+    if (!window.confirm('Delete forever? This cannot be undone.')) return;
+    const prev = items;
+    setItems((p) => p.filter((i) => i.id !== id));
+    try {
+      await client.deleteSave(id, { hard: true });
+    } catch {
+      setItems(prev);
+    }
+  };
 
   const sentinel = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -145,7 +216,7 @@ export default function Board({
           <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] px-6 py-3 lg:hidden">
             <Chip
               active={!filters.tag && !filters.type && !filters.source}
-              onClick={() => pushFilters({ tag: null, type: null, source: null, q: '' })}
+              onClick={() => pushFilters({ tag: null, type: null, source: null, q: '', bin: false })}
             >
               All
             </Chip>
@@ -168,12 +239,29 @@ export default function Board({
         )}
 
         <div className="p-6">
+          {filters.bin && (
+            <p className="mb-4 text-xs text-neutral-500">
+              Bin — cards here are deleted for good after {BIN_DAYS} days.
+            </p>
+          )}
           {items.length === 0 ? (
-            <EmptyState searching={searching} filtered={Boolean(filters.tag || filters.type || filters.source)} />
+            <EmptyState
+              searching={searching}
+              filtered={Boolean(filters.tag || filters.type || filters.source)}
+              bin={filters.bin}
+            />
           ) : (
-            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="columns-1 gap-3.5 [column-fill:_balance] sm:columns-2 xl:columns-3">
               {items.map((s) => (
-                <Card key={s.id} save={s} onClick={() => setSelected(s)} />
+                <Card
+                  key={s.id}
+                  save={s}
+                  bin={filters.bin}
+                  onClick={() => !filters.bin && setSelected(s)}
+                  onDelete={() => softDelete(s.id)}
+                  onRestore={() => restore(s.id)}
+                  onDestroy={() => hardDelete(s.id)}
+                />
               ))}
             </div>
           )}
@@ -221,12 +309,42 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-function Card({ save, onClick }: { save: Save; onClick: () => void }) {
+function Card({
+  save,
+  bin,
+  onClick,
+  onDelete,
+  onRestore,
+  onDestroy,
+}: {
+  save: Save;
+  bin: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+  onDestroy: () => void;
+}) {
   return (
-    <button
+    <div
+      role={bin ? undefined : 'button'}
+      tabIndex={bin ? undefined : 0}
       onClick={onClick}
-      className="flex w-full flex-col gap-2 rounded-[10px] border border-white/[.07] bg-card p-3.5 text-left transition-colors hover:border-white/[.16] hover:bg-card-hover"
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={`group mb-3.5 flex w-full break-inside-avoid flex-col overflow-hidden rounded-[10px] border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
+        bin ? '' : 'cursor-pointer hover:bg-card-hover'
+      }`}
     >
+      {save.image_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={save.image_url}
+          alt=""
+          loading="lazy"
+          className="max-h-44 w-full border-b border-white/[.06] object-cover"
+          onError={(e) => (e.currentTarget.style.display = 'none')}
+        />
+      )}
+      <div className="flex flex-col gap-2 p-3.5">
       <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         {save.domain && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -241,6 +359,19 @@ function Card({ save, onClick }: { save: Save; onClick: () => void }) {
         )}
         <span className="truncate">{save.domain}</span>
         <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
+        {!bin && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Move to bin"
+            title="Move to bin"
+            className="-m-1 p-1 text-neutral-600 opacity-0 transition-opacity hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        )}
       </div>
       <div className="line-clamp-2 text-sm font-semibold leading-[1.35] tracking-[-0.01em] text-neutral-50">
         {save.title || save.url}
@@ -255,7 +386,24 @@ function Card({ save, onClick }: { save: Save; onClick: () => void }) {
           ))}
         </div>
       )}
-    </button>
+      {bin && (
+        <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
+          <button
+            onClick={onRestore}
+            className="rounded-md bg-white/[.06] px-2.5 py-1 text-neutral-200 hover:bg-white/[.10]"
+          >
+            Restore
+          </button>
+          <button onClick={onDestroy} className="rounded-md px-2 py-1 text-red-400/80 hover:text-red-400">
+            Delete forever
+          </button>
+          <span className="ml-auto text-neutral-600">
+            {save.deleted_at ? `gone in ${daysLeft(save.deleted_at)}d` : ''}
+          </span>
+        </div>
+      )}
+      </div>
+    </div>
   );
 }
 
@@ -271,10 +419,12 @@ function Summary({ save }: { save: Save }) {
   return null;
 }
 
-function EmptyState({ searching, filtered }: { searching: boolean; filtered: boolean }) {
+function EmptyState({ searching, filtered, bin }: { searching: boolean; filtered: boolean; bin: boolean }) {
   return (
     <div className="py-24 text-center text-neutral-500">
-      {searching ? (
+      {bin ? (
+        <p>Bin is empty.</p>
+      ) : searching ? (
         <p>No cards match your search.</p>
       ) : filtered ? (
         <p>No cards match this filter.</p>

@@ -173,6 +173,9 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
           <span>{save.domain}</span>
           <span className="dot-sep">·</span>
           <time>{new Date(save.created_at).toLocaleDateString()}</time>
+          <button className="lcard-x" onClick={onDelete} aria-label="Move to bin" title="Move to bin">
+            ✕
+          </button>
         </div>
         <div className="lcard-top">
           <a className="lcard-title" href={save.url} target="_blank" rel="noreferrer">
@@ -200,16 +203,13 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
           </p>
         ) : null}
         {save.note && <p className="lcard-note">{save.note}</p>}
-        <div className="row" style={{ justifyContent: 'space-between', marginTop: 6 }}>
-          <div className="chips" style={{ marginTop: 0 }}>
+        {save.tags.length > 0 && (
+          <div className="chips" style={{ marginTop: 6 }}>
             {save.tags.slice(0, 4).map((t) => (
               <span className="chip" key={t}>{t}</span>
             ))}
           </div>
-          <button className="ghost danger" onClick={onDelete} aria-label="Delete save">
-            Delete
-          </button>
-        </div>
+        )}
       </div>
     </article>
   );

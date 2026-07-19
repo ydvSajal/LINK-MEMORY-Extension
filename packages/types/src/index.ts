@@ -25,6 +25,7 @@ export const SaveSchema = z.object({
   ai_status: AiStatus,
   created_at: z.string(),
   updated_at: z.string(),
+  deleted_at: z.string().nullable().default(null),
   tags: z.array(z.string()).default([]),
 });
 export type Save = z.infer<typeof SaveSchema>;
@@ -48,6 +49,7 @@ export const UpdateSaveInput = z.object({
   title: z.string().max(500).optional(),
   note: z.string().max(5000).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  restore: z.boolean().optional(), // pull a card back out of the bin
 });
 export type UpdateSaveInput = z.infer<typeof UpdateSaveInput>;
 

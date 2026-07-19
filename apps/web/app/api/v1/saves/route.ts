@@ -22,7 +22,14 @@ export async function POST(req: Request) {
       .eq('url', body.url)
       .limit(1)
       .maybeSingle();
-    if (existing) return json({ ...serializeSave(existing), duplicate: true }, 200);
+    if (existing) {
+      // Re-saving a binned URL rescues it from the bin.
+      if (existing.deleted_at) {
+        await db.from('saves').update({ deleted_at: null }).eq('id', existing.id);
+        existing.deleted_at = null;
+      }
+      return json({ ...serializeSave(existing), duplicate: true }, 200);
+    }
 
     const { data: created, error } = await db
       .from('saves')
@@ -66,6 +73,7 @@ export async function GET(req: Request) {
       tag: searchParams.get('tag'),
       type: searchParams.get('type'),
       source: searchParams.get('source'),
+      bin: searchParams.get('bin') === '1',
     });
     return json(result);
   } catch (e) {

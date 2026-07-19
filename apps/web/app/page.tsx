@@ -15,6 +15,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<SP>
   const type = one(sp.type);
   const source = one(sp.source);
   const q = one(sp.q);
+  const bin = one(sp.bin) === '1';
 
   const db = await cookieClient();
   const {
@@ -26,16 +27,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<SP>
   const searching = Boolean(q && q.trim());
   const list = searching
     ? { items: await searchSaves(db, q!), next_cursor: null }
-    : await querySaves(db, { tag, type, source });
+    : await querySaves(db, { tag, type, source, bin });
 
   return (
     <Board
       // Reset client state whenever the filter/search changes.
-      key={`${tag}|${type}|${source}|${q}`}
+      key={`${tag}|${type}|${source}|${q}|${bin}`}
       initialItems={list.items}
       initialCursor={list.next_cursor}
       tags={tags}
-      filters={{ tag, type, source, q: q ?? '' }}
+      filters={{ tag, type, source, q: q ?? '', bin }}
       profile={{ email: user.email ?? '', since: user.created_at }}
     />
   );

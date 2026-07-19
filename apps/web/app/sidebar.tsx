@@ -7,7 +7,7 @@ import type { TagCount } from '@recall/types';
 export const TYPES = ['link', 'article', 'video', 'tweet', 'text'] as const;
 export const SOURCES = ['extension', 'web', 'telegram'] as const;
 
-export type BoardFilters = { tag: string | null; type: string | null; source: string | null };
+export type BoardFilters = { tag: string | null; type: string | null; source: string | null; bin?: boolean };
 
 function Item({
   href,
@@ -65,11 +65,14 @@ export default function Sidebar({
           <span className="text-[15px] font-semibold tracking-tight">Recall</span>
         </Link>
 
-        <Item href="/" active={onBoard && !filters?.type && !filters?.tag && !filters?.source}>
+        <Item href="/" active={onBoard && !filters?.type && !filters?.tag && !filters?.source && !filters?.bin}>
           Memories
         </Item>
         <Item href="/todos" active={pathname.startsWith('/todos')}>
           To-dos
+        </Item>
+        <Item href="/?bin=1" active={Boolean(filters?.bin)}>
+          Bin
         </Item>
 
         {onBoard && (

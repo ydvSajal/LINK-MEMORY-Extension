@@ -31,6 +31,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) patch.title = body.title;
     if (body.note !== undefined) patch.note = body.note;
+    if (body.restore) patch.deleted_at = null;
 
     const { data, error } = await db.from('saves').update(patch).eq('id', id).select('id').maybeSingle();
     if (error) return json({ error: error.message }, 500);
@@ -49,12 +50,16 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
+// DELETE /saves/:id — soft delete into the bin; ?hard=1 removes permanently.
 export async function DELETE(req: Request, { params }: Ctx) {
   try {
     const { user, db } = await requireUser(req);
     rateLimit(user.id);
     const { id } = await params;
-    const { error } = await db.from('saves').delete().eq('id', id);
+    const hard = new URL(req.url).searchParams.get('hard') === '1';
+    const { error } = hard
+      ? await db.from('saves').delete().eq('id', id)
+      : await db.from('saves').update({ deleted_at: new Date().toISOString() }).eq('id', id);
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
   } catch (e) {

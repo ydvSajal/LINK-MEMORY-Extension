@@ -41,9 +41,9 @@ export class RecallClient {
     return this.req('/saves', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  listSaves(params: { limit?: number; cursor?: string; tag?: string; type?: string; source?: string } = {}): Promise<SaveList> {
+  listSaves(params: { limit?: number; cursor?: string; tag?: string; type?: string; source?: string; bin?: boolean } = {}): Promise<SaveList> {
     const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) if (v != null) qs.set(k, String(v));
+    for (const [k, v] of Object.entries(params)) if (v != null && v !== false) qs.set(k, k === 'bin' ? '1' : String(v));
     const q = qs.toString();
     return this.req(`/saves${q ? `?${q}` : ''}`);
   }
@@ -56,8 +56,13 @@ export class RecallClient {
     return this.req(`/saves/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
   }
 
-  deleteSave(id: string): Promise<{ ok: boolean }> {
-    return this.req(`/saves/${id}`, { method: 'DELETE' });
+  /** Soft delete (moves to bin). Pass hard: true to delete permanently. */
+  deleteSave(id: string, opts: { hard?: boolean } = {}): Promise<{ ok: boolean }> {
+    return this.req(`/saves/${id}${opts.hard ? '?hard=1' : ''}`, { method: 'DELETE' });
+  }
+
+  restoreSave(id: string): Promise<Save> {
+    return this.req(`/saves/${id}`, { method: 'PATCH', body: JSON.stringify({ restore: true }) });
   }
 
   enrich(id: string): Promise<{ ai_summary: string; tags: string[]; ai_status: string }> {

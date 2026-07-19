@@ -88,7 +88,20 @@ export type SaveQuery = {
   tag?: string | null;
   type?: string | null;
   source?: string | null;
+  bin?: boolean; // list binned (soft-deleted) saves instead of live ones
 };
+
+/** Binned saves are purged for good after this many days. */
+export const BIN_DAYS = 2;
+
+/**
+ * Delete binned saves older than BIN_DAYS. Called lazily from querySaves so no
+ * cron is needed; RLS scopes it to the calling user.
+ */
+async function purgeExpired(db: SupabaseClient): Promise<void> {
+  const cutoff = new Date(Date.now() - BIN_DAYS * 86_400_000).toISOString();
+  await db.from('saves').delete().lt('deleted_at', cutoff);
+}
 
 /**
  * List a user's saves (newest first) with cursor pagination and optional
@@ -99,8 +112,10 @@ export async function querySaves(
   db: SupabaseClient,
   p: SaveQuery,
 ): Promise<{ items: Save[]; next_cursor: string | null }> {
+  await purgeExpired(db);
   const limit = Math.min(p.limit ?? 20, 50);
   let q = db.from('saves').select(SAVE_SELECT).order('created_at', { ascending: false }).limit(limit);
+  q = p.bin ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
   if (p.cursor) q = q.lt('created_at', p.cursor);
   if (p.type) q = q.eq('content_type', p.type);
   if (p.source) q = q.eq('source', p.source);
@@ -134,6 +149,7 @@ export async function searchSaves(db: SupabaseClient, query: string, userId?: st
   let q = db
     .from('saves')
     .select(SAVE_SELECT)
+    .is('deleted_at', null)
     .or(`title.ilike.${like},ai_summary.ilike.${like},note.ilike.${like}`)
     .order('created_at', { ascending: false })
     .limit(50);
