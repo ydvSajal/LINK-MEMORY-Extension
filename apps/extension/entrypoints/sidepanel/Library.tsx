@@ -167,15 +167,6 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
 
   return (
     <article className="lcard">
-      {save.image_url && (
-        <img
-          className="lcard-img"
-          src={save.image_url}
-          alt=""
-          loading="lazy"
-          onError={(e) => (e.currentTarget.style.display = 'none')}
-        />
-      )}
       <div className="lcard-body">
         <div className="lcard-meta">
           <img src={favicon} alt="" width={14} height={14} />
@@ -183,9 +174,20 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
           <span className="dot-sep">·</span>
           <time>{new Date(save.created_at).toLocaleDateString()}</time>
         </div>
-        <a className="lcard-title" href={save.url} target="_blank" rel="noreferrer">
-          {save.title || save.url}
-        </a>
+        <div className="lcard-top">
+          <a className="lcard-title" href={save.url} target="_blank" rel="noreferrer">
+            {save.title || save.url}
+          </a>
+          {save.image_url && (
+            <img
+              className="lcard-thumb"
+              src={save.image_url}
+              alt=""
+              loading="lazy"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          )}
+        </div>
         {save.ai_summary ? (
           <p className={`lcard-sum${open ? ' open' : ''}`} onClick={() => setOpen((v) => !v)}>
             {save.ai_summary}
@@ -218,7 +220,6 @@ function SkeletonList() {
     <div className="lib-body" aria-hidden>
       {[0, 1, 2, 3].map((i) => (
         <div className="lcard" key={i}>
-          <div className="skel" style={{ height: 96 }} />
           <div className="lcard-body">
             <div className="skel" style={{ height: 10, width: '40%' }} />
             <div className="skel mt-s" style={{ height: 14, width: '85%' }} />

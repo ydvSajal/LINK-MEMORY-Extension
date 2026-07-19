@@ -126,7 +126,9 @@ export async function querySaves(
  * `userId` is required when db is the service-role client (no RLS scoping).
  */
 export async function searchSaves(db: SupabaseClient, query: string, userId?: string): Promise<Save[]> {
-  const term = query.trim();
+  // Commas/parens are PostgREST .or() syntax — strip them or long free-text
+  // queries blow up with "failed to parse logic tree".
+  const term = query.replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!term) return [];
   const like = `%${term.replace(/[%_]/g, '\\$&')}%`;
   let q = db

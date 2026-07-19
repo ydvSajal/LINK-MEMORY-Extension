@@ -29,7 +29,29 @@ const HELP =
   '• Ask anything in plain text to search your saves\n' +
   '• /recent — last 5 saves\n' +
   '• /search <words> — keyword search\n' +
+  '• /todo <task> [YYYY-MM-DD] — add a to-do (date → daily reminder)\n' +
+  '• /todos — list open to-dos\n' +
+  '• /done <n> — mark to-do n as done\n' +
   '• /link <code> — connect your account (code from Settings on the site)';
+
+// "/todo buy milk 2026-07-25" or "... tomorrow"/"today" → { text, due_date|null }.
+function parseTodo(raw: string): { text: string; due: string | null } {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  let due: string | null = null;
+  let text = raw;
+  const m = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (m) {
+    due = m[1];
+    text = raw.replace(m[1], '');
+  } else if (/\btomorrow\b/i.test(raw)) {
+    due = iso(new Date(Date.now() + 86_400_000));
+    text = raw.replace(/\btomorrow\b/i, '');
+  } else if (/\btoday\b/i.test(raw)) {
+    due = iso(new Date());
+    text = raw.replace(/\btoday\b/i, '');
+  }
+  return { text: text.replace(/\s+/g, ' ').trim(), due };
+}
 
 // POST /api/telegram — Telegram webhook. Auth = secret token header set at setWebhook time.
 export async function POST(req: Request) {
@@ -135,6 +157,51 @@ export async function POST(req: Request) {
           await send(BOT, chatId, 'Saved, but the AI summary failed. It will still show on the site.');
         }
         return;
+      }
+
+      if (text.startsWith('/todos')) {
+        const { data } = await db
+          .from('todos')
+          .select('text, due_date')
+          .eq('user_id', userId)
+          .eq('done', false)
+          .order('created_at', { ascending: true });
+        if (!data?.length) return void (await send(BOT, chatId, 'No open to-dos. Add one: /todo <task> [YYYY-MM-DD]'));
+        return void (
+          await send(
+            BOT,
+            chatId,
+            data.map((t, i) => `${i + 1}. ${t.text}${t.due_date ? ` (due ${t.due_date})` : ''}`).join('\n'),
+          )
+        );
+      }
+
+      if (text.startsWith('/todo')) {
+        const { text: task, due } = parseTodo(text.replace(/^\/todo\s*/, ''));
+        if (!task) return void (await send(BOT, chatId, 'Usage: /todo <task> [YYYY-MM-DD | today | tomorrow]'));
+        const { error } = await db.from('todos').insert({ user_id: userId, text: task, due_date: due });
+        if (error) return void (await send(BOT, chatId, `Could not add: ${error.message}`));
+        return void (
+          await send(
+            BOT,
+            chatId,
+            due ? `Added: ${task}\nDue ${due} — I'll remind you here that morning.` : `Added: ${task}`,
+          )
+        );
+      }
+
+      if (text.startsWith('/done')) {
+        const n = Number(text.split(/\s+/)[1]);
+        const { data } = await db
+          .from('todos')
+          .select('id, text')
+          .eq('user_id', userId)
+          .eq('done', false)
+          .order('created_at', { ascending: true });
+        const target = data?.[n - 1];
+        if (!n || !target) return void (await send(BOT, chatId, 'Usage: /done <number from /todos>'));
+        await db.from('todos').update({ done: true }).eq('id', target.id);
+        return void (await send(BOT, chatId, `Done: ${target.text} ✓`));
       }
 
       if (text.startsWith('/recent')) {

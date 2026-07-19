@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     if (body.tags?.length) await attachTags(db, user.id, created.id, body.tags);
 
     // Enrich after the response is sent; after() keeps the lambda alive on Vercel.
-    after(() => triggerEnrich(created.id, token, body.page_text));
+    after(() => triggerEnrich(created.id, token, body.page_text, new URL(req.url).origin));
 
     const { data: full } = await db.from('saves').select(SAVE_SELECT).eq('id', created.id).single();
     return json(serializeSave(full ?? created), 201);

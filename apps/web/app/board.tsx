@@ -135,6 +135,12 @@ export default function Board({
                   )}
                   <div className="mt-1 text-xs text-neutral-500">{items.length} saves loaded</div>
                   <a
+                    href="/todos"
+                    className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"
+                  >
+                    To-dos
+                  </a>
+                  <a
                     href="/settings"
                     className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"
                   >
