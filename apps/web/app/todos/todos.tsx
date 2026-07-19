@@ -209,7 +209,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
         <Section title="No date" todos={undated} onCycle={cycle} onDelete={remove} />
         <Section title="Other days" todos={otherDays} onCycle={cycle} onDelete={remove} showDate />
 
-        <div className="sticky bottom-0 mt-8 flex gap-2 border-t border-white/[.06] bg-shell/90 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mt-8 flex flex-wrap gap-2 border-t border-white/[.06] bg-shell/90 py-3 backdrop-blur">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}

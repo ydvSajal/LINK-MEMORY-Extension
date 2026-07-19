@@ -193,7 +193,7 @@ export default function Board({
       <Sidebar tags={tags} filters={filters} profile={profile} />
 
       <main className="min-w-0 flex-1">
-        <div className="flex items-center gap-3 border-b border-white/[.06] px-6 py-3.5">
+        <div className="flex items-center gap-3 border-b border-white/[.06] px-4 py-3.5 sm:px-6">
           <div className="flex flex-1 items-center gap-2 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-1.5 focus-within:border-white/[.16]">
             <span className="text-sm text-neutral-500" aria-hidden>
               ⌕
@@ -213,7 +213,7 @@ export default function Board({
 
         {/* Mobile filters — the sidebar covers these on desktop */}
         {!searching && (
-          <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] px-6 py-3 lg:hidden">
+          <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] px-4 py-3 lg:hidden">
             <Chip
               active={!filters.tag && !filters.type && !filters.source}
               onClick={() => pushFilters({ tag: null, type: null, source: null, q: '', bin: false })}
@@ -238,7 +238,7 @@ export default function Board({
           </div>
         )}
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {filters.bin && (
             <p className="mb-4 text-xs text-neutral-500">
               Bin — cards here are deleted for good after {BIN_DAYS} days.
@@ -373,7 +373,7 @@ function Card({
           </button>
         )}
       </div>
-      <div className="line-clamp-2 text-sm font-semibold leading-[1.35] tracking-[-0.01em] text-neutral-50">
+      <div className="line-clamp-2 text-sm font-semibold leading-[1.35] tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
         {save.title || save.url}
       </div>
       <Summary save={save} />
@@ -514,7 +514,7 @@ function Sheet({
           />
         )}
 
-        <h2 className="mt-3 text-base font-semibold">{save.title || save.url}</h2>
+        <h2 className="mt-3 text-base font-semibold [overflow-wrap:anywhere]">{save.title || save.url}</h2>
         {save.ai_summary && <p className="mt-2 text-sm text-neutral-400">{save.ai_summary}</p>}
 
         <a
