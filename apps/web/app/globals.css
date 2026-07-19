@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+@theme {
+  --color-shell: #0e0e10;
+  --color-card: #121214;
+  --color-card-hover: #151517;
+}

@@ -9,13 +9,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0a0a0a',
+  themeColor: '#0e0e10',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-neutral-950 text-neutral-100 antialiased">
+      <body className="bg-shell text-neutral-50 antialiased">
         {children}
         <Pwa />
       </body>

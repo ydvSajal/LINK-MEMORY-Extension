@@ -5,12 +5,17 @@ import { useRouter } from 'next/navigation';
 import { RecallClient } from '@recall/api-client';
 import type { Save, TagCount } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
-import Nav from './nav';
+import Sidebar, { TYPES, SOURCES } from './sidebar';
 
 type Filters = { tag: string | null; type: string | null; source: string | null; q: string };
 
-const TYPES = ['link', 'article', 'video', 'tweet', 'text'] as const;
-const SOURCES = ['extension', 'web', 'telegram'] as const;
+const age = (iso: string) => {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d`;
+  return `${Math.floor(s / 604800)}w`;
+};
 
 export default function Board({
   initialItems,
@@ -42,8 +47,8 @@ export default function Board({
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Save | null>(null);
   const [search, setSearch] = useState(filters.q);
-  const [menuOpen, setMenuOpen] = useState(false);
   const searching = Boolean(filters.q.trim());
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const pushFilters = useCallback(
     (f: Filters) => {
@@ -66,6 +71,18 @@ export default function Board({
     const t = setTimeout(() => pushFilters({ tag: null, type: null, source: null, q: search }), 350);
     return () => clearTimeout(t);
   }, [search, filters.q, pushFilters]);
+
+  // ⌘K / Ctrl+K focuses search.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   const toggle = (key: 'tag' | 'type' | 'source', val: string) =>
     pushFilters({ ...filters, q: '', [key]: filters[key] === val ? null : val });
@@ -100,108 +117,75 @@ export default function Board({
     return () => io.disconnect();
   }, [loadMore, searching, cursor]);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
   return (
-    <main className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-          <span className="text-lg font-semibold">Recall</span>
-          <Nav />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search your memory…"
-            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm outline-none focus:border-violet-500"
-          />
-          <div className="relative">
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Profile menu"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-sm font-semibold uppercase"
-            >
-              {profile.email.charAt(0) || '?'}
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-10 z-20 w-64 rounded-xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl">
-                  <div className="truncate text-sm font-medium">{profile.email}</div>
-                  {profile.since && (
-                    <div className="mt-1 text-xs text-neutral-500">
-                      Member since {new Date(profile.since).toLocaleDateString()}
-                    </div>
-                  )}
-                  <div className="mt-1 text-xs text-neutral-500">{items.length} saves loaded</div>
-                  <a
-                    href="/settings"
-                    className="mt-3 block w-full rounded-lg border border-neutral-700 py-1.5 text-center text-sm text-neutral-300 hover:bg-neutral-800"
-                  >
-                    Settings
-                  </a>
-                  <button
-                    onClick={signOut}
-                    className="mt-2 w-full rounded-lg border border-neutral-700 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              </>
-            )}
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <Sidebar tags={tags} filters={filters} profile={profile} />
+
+      <main className="min-w-0 flex-1">
+        <div className="flex items-center gap-3 border-b border-white/[.06] px-6 py-3.5">
+          <div className="flex flex-1 items-center gap-2 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-1.5 focus-within:border-white/[.16]">
+            <span className="text-sm text-neutral-500" aria-hidden>
+              ⌕
+            </span>
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search your memory…"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-500"
+            />
+            <kbd className="hidden rounded border border-white/[.10] px-1.5 py-px font-mono text-[11px] text-neutral-600 sm:block">
+              ⌘K
+            </kbd>
           </div>
         </div>
 
+        {/* Mobile filters — the sidebar covers these on desktop */}
         {!searching && (
-          <div className="mx-auto flex max-w-6xl flex-wrap gap-1.5 px-4 pb-3">
+          <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] px-6 py-3 lg:hidden">
             <Chip
               active={!filters.tag && !filters.type && !filters.source}
               onClick={() => pushFilters({ tag: null, type: null, source: null, q: '' })}
             >
               All
             </Chip>
-            <span className="mx-1 self-center text-neutral-700">·</span>
             {TYPES.map((t) => (
               <Chip key={t} active={filters.type === t} onClick={() => toggle('type', t)}>
                 {t}
               </Chip>
             ))}
-            <span className="mx-1 self-center text-neutral-700">·</span>
             {SOURCES.map((s) => (
               <Chip key={s} active={filters.source === s} onClick={() => toggle('source', s)}>
                 {s}
               </Chip>
             ))}
-            {tags.length > 0 && <span className="mx-1 self-center text-neutral-700">·</span>}
             {tags.map((t) => (
               <Chip key={t.name} active={filters.tag === t.name} onClick={() => toggle('tag', t.name)}>
-                #{t.name} <span className="text-neutral-500">{t.count}</span>
+                #{t.name} <span className="text-neutral-600">{t.count}</span>
               </Chip>
             ))}
           </div>
         )}
-      </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        {items.length === 0 ? (
-          <EmptyState searching={searching} filtered={Boolean(filters.tag || filters.type || filters.source)} />
-        ) : (
-          <div className="gap-4 [column-fill:_balance] columns-1 sm:columns-2 lg:columns-3 xl:columns-4">
-            {items.map((s) => (
-              <Card key={s.id} save={s} onClick={() => setSelected(s)} />
-            ))}
-          </div>
-        )}
+        <div className="p-6">
+          {items.length === 0 ? (
+            <EmptyState searching={searching} filtered={Boolean(filters.tag || filters.type || filters.source)} />
+          ) : (
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+              {items.map((s) => (
+                <Card key={s.id} save={s} onClick={() => setSelected(s)} />
+              ))}
+            </div>
+          )}
 
-        {error && <p className="mt-4 text-center text-sm text-red-400">{error}</p>}
-        {!searching && cursor && (
-          <div ref={sentinel} className="py-8 text-center text-sm text-neutral-500">
-            {loading ? 'Loading…' : ''}
-          </div>
-        )}
-      </div>
+          {error && <p className="mt-4 text-center text-sm text-red-400">{error}</p>}
+          {!searching && cursor && (
+            <div ref={sentinel} className="py-8 text-center text-sm text-neutral-500">
+              {loading ? 'Loading…' : ''}
+            </div>
+          )}
+        </div>
+      </main>
 
       {selected && (
         <Sheet
@@ -218,7 +202,7 @@ export default function Board({
           }}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -228,8 +212,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
         active
-          ? 'border-violet-500 bg-violet-600 text-white'
-          : 'border-neutral-700 text-neutral-300 hover:border-neutral-500'
+          ? 'border-white/[.25] bg-white/[.08] text-neutral-50'
+          : 'border-white/[.08] text-neutral-400 hover:border-white/[.20] hover:text-neutral-200'
       }`}
     >
       {children}
@@ -241,66 +225,49 @@ function Card({ save, onClick }: { save: Save; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 text-left transition-colors hover:border-neutral-600"
+      className="flex w-full flex-col gap-2 rounded-[10px] border border-white/[.07] bg-card p-3.5 text-left transition-colors hover:border-white/[.16] hover:bg-card-hover"
     >
-      <div className="relative">
-        {save.image_url && (
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+        {save.domain && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={save.image_url}
+            src={`https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`}
             alt=""
-            className="w-full object-cover"
+            width={13}
+            height={13}
+            className="rounded-[3px]"
             onError={(e) => (e.currentTarget.style.display = 'none')}
           />
         )}
-        {save.note && (
-          <div className="absolute inset-0 hidden items-end bg-gradient-to-t from-black/90 via-black/40 to-transparent p-3 group-hover:flex">
-            <p className="line-clamp-4 text-xs text-neutral-100">{save.note}</p>
-          </div>
-        )}
+        <span className="truncate">{save.domain}</span>
+        <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
       </div>
-      <div className="p-3">
-        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          {save.domain && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`}
-              alt=""
-              width={14}
-              height={14}
-              className="rounded-sm"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          )}
-          <span className="truncate">{save.domain}</span>
+      <div className="line-clamp-2 text-sm font-semibold leading-[1.35] tracking-[-0.01em] text-neutral-50">
+        {save.title || save.url}
+      </div>
+      <Summary save={save} />
+      {save.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {save.tags.map((t) => (
+            <span key={t} className="rounded bg-white/[.05] px-1.5 py-0.5 text-[11px] text-neutral-400">
+              {t}
+            </span>
+          ))}
         </div>
-        <div className="mt-1 line-clamp-2 text-sm font-medium text-neutral-100">{save.title || save.url}</div>
-        <Summary save={save} />
-        {save.tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {save.tags.map((t) => (
-              <span key={t} className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-400">
-                #{t}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
     </button>
   );
 }
 
 function Summary({ save }: { save: Save }) {
-  if (save.ai_summary) return <p className="mt-1.5 line-clamp-3 text-xs text-neutral-400">{save.ai_summary}</p>;
+  if (save.ai_summary)
+    return <p className="line-clamp-2 text-[12.5px] leading-normal text-neutral-400">{save.ai_summary}</p>;
   if (save.ai_status === 'pending')
-    return (
-      <p className="mt-1.5 animate-pulse text-xs text-violet-400">
-        <span aria-hidden>✦ </span>Summarizing…
-      </p>
-    );
+    return <p className="animate-pulse text-xs text-neutral-500">Summarizing…</p>;
   if (save.ai_status === 'failed')
-    return <p className="mt-1.5 text-xs text-neutral-600">Summary unavailable — check AI keys in Settings.</p>;
-  if (save.description) return <p className="mt-1.5 line-clamp-3 text-xs text-neutral-400">{save.description}</p>;
+    return <p className="text-xs text-neutral-600">Summary unavailable — check AI keys in Settings.</p>;
+  if (save.description)
+    return <p className="line-clamp-2 text-[12.5px] leading-normal text-neutral-400">{save.description}</p>;
   return null;
 }
 
@@ -378,8 +345,8 @@ function Sheet({
 
   return (
     <div className="fixed inset-0 z-20 flex justify-end" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-neutral-800 bg-neutral-950 p-5">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-white/[.08] bg-shell p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="text-xs text-neutral-500">{save.domain}</div>
           <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200" aria-label="Close">
@@ -392,7 +359,7 @@ function Sheet({
           <img
             src={save.image_url}
             alt=""
-            className="mt-3 w-full rounded-lg object-cover"
+            className="mt-3 w-full rounded-lg border border-white/[.07] object-cover"
             onError={(e) => (e.currentTarget.style.display = 'none')}
           />
         )}
@@ -404,7 +371,7 @@ function Sheet({
           href={save.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="mt-3 inline-block text-sm text-violet-400 hover:underline"
+          className="mt-3 inline-block text-sm text-neutral-300 underline decoration-neutral-600 underline-offset-2 hover:text-neutral-100"
         >
           Open original ↗
         </a>
@@ -416,7 +383,7 @@ function Sheet({
           rows={4}
           maxLength={5000}
           placeholder="Add a note…"
-          className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-sm outline-none focus:border-violet-500"
+          className="mt-1 w-full rounded-lg border border-white/[.08] bg-white/[.03] p-2 text-sm outline-none focus:border-white/[.20]"
         />
 
         <label className="mt-4 block text-xs font-medium text-neutral-400">Tags (comma-separated)</label>
@@ -424,7 +391,7 @@ function Sheet({
           value={tags}
           onChange={(e) => setTags(e.target.value)}
           placeholder="ai, reading, tools"
-          className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
+          className="mt-1 w-full rounded-lg border border-white/[.08] bg-white/[.03] px-2 py-1.5 text-sm outline-none focus:border-white/[.20]"
         />
 
         {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
@@ -433,14 +400,14 @@ function Sheet({
           <button
             onClick={persist}
             disabled={busy || !dirty}
-            className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium disabled:opacity-40"
+            className="rounded-lg bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40"
           >
             {busy ? '…' : 'Save'}
           </button>
           <button
             onClick={remove}
             disabled={busy}
-            className="ml-auto rounded-lg border border-red-900 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950 disabled:opacity-40"
+            className="ml-auto rounded-lg border border-red-900/60 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/40 disabled:opacity-40"
           >
             Delete
           </button>

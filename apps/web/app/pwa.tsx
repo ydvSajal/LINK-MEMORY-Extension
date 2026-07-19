@@ -38,7 +38,7 @@ export default function Pwa() {
   };
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
+    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-xl border border-white/[.10] bg-card p-4 shadow-2xl">
       <div className="flex items-start gap-3">
         <img src="/icon-192.png" alt="" className="h-10 w-10 rounded-lg" />
         <div className="min-w-0 flex-1">
@@ -50,7 +50,7 @@ export default function Pwa() {
         <button onClick={later} className="rounded-lg px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200">
           Not now
         </button>
-        <button onClick={install} className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium hover:bg-violet-500">
+        <button onClick={install} className="rounded-lg bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white">
           Install
         </button>
       </div>

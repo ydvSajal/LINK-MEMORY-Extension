@@ -91,10 +91,10 @@ function ProviderCard({
   };
 
   return (
-    <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+    <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
       <div className="flex items-center gap-2">
         <h2 className="font-medium">{label}</h2>
-        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs text-neutral-400">{role}</span>
+        <span className="rounded-full border border-white/[.10] px-2 py-0.5 text-xs text-neutral-400">{role}</span>
       </div>
 
       <label className="mt-4 block text-sm text-neutral-400">Model</label>
@@ -102,7 +102,7 @@ function ProviderCard({
         value={model}
         onChange={(e) => setModel(e.target.value)}
         placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'leave empty for server default chain'}
-        className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+        className="mt-1 w-full rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 text-sm outline-none focus:border-white/[.20]"
         list={`model-hints-${provider}`}
       />
       <datalist id={`model-hints-${provider}`}>
@@ -119,7 +119,7 @@ function ProviderCard({
         onChange={(e) => setKey(e.target.value)}
         type="password"
         placeholder={provider === 'gemini' ? 'AIza… (aistudio.google.com/apikey, free)' : 'sk-or-v1-… (leave empty to use server key)'}
-        className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono"
+        className="mt-1 w-full rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 text-sm font-mono outline-none focus:border-white/[.20]"
       />
       {provider === 'gemini' && !hasKey && !key && (
         <p className="mt-2 text-xs text-amber-400">Gemini needs your own API key (free at aistudio.google.com/apikey).</p>
@@ -129,14 +129,14 @@ function ProviderCard({
         <button
           onClick={save}
           disabled={busy}
-          className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium disabled:opacity-50"
+          className="rounded-lg bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
         >
           {busy ? '…' : 'Save'}
         </button>
         <button
           onClick={test}
           disabled={testing}
-          className="rounded-lg border border-neutral-700 px-5 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
+          className="rounded-lg border border-white/[.10] px-5 py-2 text-sm text-neutral-300 hover:bg-white/[.05] disabled:opacity-50"
         >
           {testing ? 'Testing…' : 'Test API'}
         </button>
@@ -188,10 +188,10 @@ function FirecrawlCard({ hasKey, authed, onSaved }: { hasKey: boolean; authed: A
   };
 
   return (
-    <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+    <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
       <div className="flex items-center gap-2">
         <h2 className="font-medium">Firecrawl</h2>
-        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs text-neutral-400">Web scraper</span>
+        <span className="rounded-full border border-white/[.10] px-2 py-0.5 text-xs text-neutral-400">Web scraper</span>
       </div>
       <p className="mt-1 text-sm text-neutral-500">
         When a save has little or no page text (Telegram saves, blocked pages), Firecrawl fetches the real content so
@@ -206,21 +206,21 @@ function FirecrawlCard({ hasKey, authed, onSaved }: { hasKey: boolean; authed: A
         onChange={(e) => setKey(e.target.value)}
         type="password"
         placeholder="fc-… (firecrawl.dev, free tier)"
-        className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono"
+        className="mt-1 w-full rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 text-sm font-mono outline-none focus:border-white/[.20]"
       />
 
       <div className="mt-4 flex items-center gap-2">
         <button
           onClick={save}
           disabled={busy || !key.trim()}
-          className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium disabled:opacity-50"
+          className="rounded-lg bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
         >
           {busy ? '…' : 'Save'}
         </button>
         <button
           onClick={test}
           disabled={testing || (!key.trim() && !hasKey)}
-          className="rounded-lg border border-neutral-700 px-5 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
+          className="rounded-lg border border-white/[.10] px-5 py-2 text-sm text-neutral-300 hover:bg-white/[.05] disabled:opacity-50"
         >
           {testing ? 'Testing…' : 'Test API'}
         </button>
@@ -339,7 +339,7 @@ export default function SettingsPage() {
         onSaved={() => setS((prev) => (prev ? { ...prev, has_firecrawl_key: true } : prev))}
       />
 
-      <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+      <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
         <h2 className="font-medium">Telegram bot</h2>
         <p className="mt-1 text-sm text-neutral-500">
           Paste your bot token (from @BotFather) — saving it registers the webhook automatically, no Vercel dashboard needed.
@@ -353,12 +353,12 @@ export default function SettingsPage() {
             onChange={(e) => setBotToken(e.target.value)}
             type="password"
             placeholder={bot?.has_bot_token ? 'token saved — type to replace' : '123456:ABC-DEF… (from @BotFather)'}
-            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono"
+            className="flex-1 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 text-sm font-mono outline-none focus:border-white/[.20]"
           />
           <button
             onClick={() => saveBotToken(botToken.trim())}
             disabled={botBusy || !botToken.trim()}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
           >
             {botBusy ? '…' : 'Register'}
           </button>
@@ -375,7 +375,7 @@ export default function SettingsPage() {
         {botMsg && <p className={`mt-2 text-sm ${botMsg.includes('live') || botMsg.includes('disabled') ? 'text-emerald-400' : 'text-red-400'}`}>{botMsg}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-neutral-800 p-5">
+      <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
         <h2 className="font-medium">Telegram account link</h2>
         {s.telegram_linked ? (
           <p className="mt-1 text-sm text-emerald-400">Linked. Send any link to the bot to save it, or ask it about your saves.</p>
@@ -385,14 +385,14 @@ export default function SettingsPage() {
               Generate a code, then send <span className="font-mono text-neutral-300">/link &lt;code&gt;</span> to your bot.
             </p>
             {s.telegram_link_code ? (
-              <p className="mt-3 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 font-mono text-lg tracking-widest">
+              <p className="mt-3 rounded-lg border border-white/[.08] bg-white/[.03] px-4 py-3 font-mono text-lg tracking-widest">
                 {s.telegram_link_code}
               </p>
             ) : (
               <button
                 onClick={genCode}
                 disabled={busy}
-                className="mt-3 rounded-lg border border-neutral-700 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
+                className="mt-3 rounded-lg border border-white/[.10] px-4 py-2 text-sm text-neutral-300 hover:bg-white/[.05] disabled:opacity-50"
               >
                 Generate link code
               </button>
@@ -402,6 +402,16 @@ export default function SettingsPage() {
       </section>
 
       {msg && <p className={`mt-4 text-sm ${msg === 'Saved.' ? 'text-emerald-400' : 'text-red-400'}`}>{msg}</p>}
+
+      <button
+        onClick={async () => {
+          await supabase.auth.signOut();
+          location.href = '/login';
+        }}
+        className="mt-8 rounded-lg border border-white/[.10] px-4 py-2 text-sm text-neutral-400 hover:bg-white/[.05] hover:text-neutral-200"
+      >
+        Sign out
+      </button>
     </main>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { browserClient } from '@/lib/supabase/client';
-import Nav from '../nav';
+import Sidebar from '../sidebar';
 
 export type Status = 'todo' | 'progress' | 'done';
 
@@ -22,9 +22,9 @@ const STATUSES: { key: Status; label: string; accent: string; dot: string }[] = 
 ];
 
 const CARD_TONES = [
-  'border-violet-500/40 bg-violet-500/10',
-  'border-red-500/40 bg-red-500/10',
-  'border-neutral-800 bg-neutral-900',
+  'border-white/[.14] bg-white/[.05]',
+  'border-red-500/30 bg-red-500/[.07]',
+  'border-white/[.07] bg-card',
 ];
 
 const NEXT: Record<Status, Status> = { todo: 'progress', progress: 'done', done: 'todo' };
@@ -57,7 +57,7 @@ const greet = () => {
 
 // Talks to Supabase directly from the browser — RLS scopes every row to the
 // signed-in user, no API route needed.
-export default function Todos({ initial, name }: { initial: Todo[]; name: string }) {
+export default function Todos({ initial, name, email }: { initial: Todo[]; name: string; email: string }) {
   const supabase = useMemo(() => browserClient(), []);
   const [items, setItems] = useState<Todo[]>(initial);
   const [text, setText] = useState('');
@@ -129,18 +129,13 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
   const otherDays = visible.filter((i) => i.due_date && i.due_date !== selected && i.status !== 'done');
 
   return (
-    <main className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center gap-4 px-4 py-3">
-          <span className="text-lg font-semibold">Recall</span>
-          <Nav />
-        </div>
-      </header>
-
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <Sidebar profile={{ email }} />
+      <main className="min-w-0 flex-1">
       <div className="mx-auto max-w-2xl px-4 py-6">
         <p className="text-sm text-neutral-500">{greet()}, {name}</p>
         <h1 className="mt-1 text-2xl font-bold leading-snug">
-          You have <span className="text-violet-400">{dueToday} task{dueToday === 1 ? '' : 's'}</span>
+          You have <span className="text-neutral-50 underline decoration-white/25 underline-offset-4">{dueToday} task{dueToday === 1 ? '' : 's'}</span>
           <br />
           due today
         </h1>
@@ -149,7 +144,7 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search a task…"
-          className="mt-5 w-full rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
+          className="mt-5 w-full rounded-xl border border-white/[.08] bg-white/[.03] px-3 py-2.5 text-sm outline-none focus:border-white/[.20]"
         />
 
         <div className="mt-4 grid grid-cols-3 gap-3">
@@ -161,7 +156,7 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
                 onClick={() => setStatusFilter(active ? null : s.key)}
                 aria-pressed={active}
                 className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                  active ? 'border-violet-500 bg-violet-500/10' : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700'
+                  active ? 'border-white/[.25] bg-white/[.06]' : 'border-white/[.07] bg-card hover:border-white/[.16]'
                 }`}
               >
                 <span className={`block h-2 w-2 rounded-full ${s.dot}`} />
@@ -184,12 +179,12 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
                   setDue(day);
                 }}
                 className={`flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-xs transition-colors ${
-                  isSelected ? 'bg-violet-600 text-white' : 'text-neutral-400 hover:bg-neutral-900'
+                  isSelected ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-400 hover:bg-white/[.04]'
                 }`}
               >
                 <span>{fmt(d, { weekday: 'short' })}</span>
                 <span className="text-sm font-semibold">{d.getDate()}</span>
-                <span className={`h-1 w-1 rounded-full ${day === today ? 'bg-violet-300' : 'bg-transparent'}`} />
+                <span className={`h-1 w-1 rounded-full ${day === today ? (isSelected ? 'bg-neutral-600' : 'bg-neutral-400') : 'bg-transparent'}`} />
               </button>
             );
           })}
@@ -204,7 +199,7 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
         {dayTasks.length === 0 ? (
           <p className="py-8 text-center text-sm text-neutral-500">Nothing scheduled for this day.</p>
         ) : (
-          <ul className="mt-3 space-y-3 border-l border-neutral-800 pl-4">
+          <ul className="mt-3 space-y-3 border-l border-white/[.08] pl-4">
             {dayTasks.map((t, i) => (
               <Card key={t.id} todo={t} tone={CARD_TONES[i % CARD_TONES.length]} onCycle={() => cycle(t)} onDelete={() => remove(t.id)} />
             ))}
@@ -214,25 +209,25 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
         <Section title="No date" todos={undated} onCycle={cycle} onDelete={remove} />
         <Section title="Other days" todos={otherDays} onCycle={cycle} onDelete={remove} showDate />
 
-        <div className="sticky bottom-0 mt-8 flex gap-2 border-t border-neutral-800 bg-neutral-950/90 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mt-8 flex gap-2 border-t border-white/[.06] bg-shell/90 py-3 backdrop-blur">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
             placeholder="What needs doing?"
-            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-violet-500"
+            className="flex-1 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 text-sm outline-none focus:border-white/[.20]"
           />
           <input
             type="date"
             value={due}
             onChange={(e) => setDue(e.target.value)}
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-neutral-300 outline-none focus:border-violet-500"
+            className="rounded-lg border border-white/[.08] bg-white/[.03] px-2 py-2 text-sm text-neutral-300 outline-none focus:border-white/[.20]"
             aria-label="Due date"
           />
           <button
             onClick={add}
             disabled={!text.trim()}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium disabled:opacity-40"
+            className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40"
           >
             + Add Task
           </button>
@@ -240,10 +235,11 @@ export default function Todos({ initial, name }: { initial: Todo[]; name: string
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
 
         <p className="mt-4 text-xs text-neutral-600">
-          Tip: send <code className="rounded bg-neutral-900 px-1">/todo buy milk 2026-07-25</code> to the Telegram bot.
+          Tip: send <code className="rounded bg-white/[.06] px-1">/todo buy milk 2026-07-25</code> to the Telegram bot.
         </p>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -269,7 +265,7 @@ function Section({
           <Card
             key={t.id}
             todo={t}
-            tone="border-neutral-800 bg-neutral-900"
+            tone="border-white/[.07] bg-card"
             onCycle={() => onCycle(t)}
             onDelete={() => onDelete(t.id)}
             showDate={showDate}

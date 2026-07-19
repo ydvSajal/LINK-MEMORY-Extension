@@ -76,12 +76,12 @@ function LoginInner() {
             <textarea
               readOnly
               onFocus={(e) => e.currentTarget.select()}
-              className="h-28 w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2 font-mono text-xs"
+              className="h-28 w-full rounded-lg border border-white/[.08] bg-white/[.03] p-2 font-mono text-xs"
               value={payload}
             />
           </>
         ) : (
-          <a className="text-violet-400 underline" href="/">Go to your cards →</a>
+          <a className="text-neutral-200 underline decoration-neutral-600 underline-offset-2 hover:text-white" href="/">Go to your cards →</a>
         )}
       </main>
     );
@@ -91,20 +91,20 @@ function LoginInner() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-3 p-8">
       <h1 className="text-2xl font-semibold">Recall</h1>
       <p className="text-neutral-400">{mode === 'in' ? 'Log in' : 'Create an account'} to save and recall.</p>
-      <button onClick={google} className="rounded-lg border border-neutral-700 py-2 hover:bg-neutral-900">
+      <button onClick={google} className="rounded-lg border border-white/[.10] py-2 hover:bg-white/[.05]">
         Continue with Google
       </button>
       <div className="my-1 text-center text-xs text-neutral-500">or</div>
       <input
-        className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2"
+        className="rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 outline-none focus:border-white/[.20]"
         type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)}
       />
       <input
-        className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2"
+        className="rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-2 outline-none focus:border-white/[.20]"
         type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
       />
-      <button onClick={submit} disabled={busy} className="rounded-lg bg-violet-600 py-2 font-medium disabled:opacity-50">
+      <button onClick={submit} disabled={busy} className="rounded-lg bg-neutral-100 py-2 font-medium text-neutral-900 hover:bg-white disabled:opacity-50">
         {busy ? '…' : mode === 'in' ? 'Log in' : 'Sign up'}
       </button>
       <button onClick={() => setMode(mode === 'in' ? 'up' : 'in')} className="text-sm text-neutral-400 hover:text-neutral-200">

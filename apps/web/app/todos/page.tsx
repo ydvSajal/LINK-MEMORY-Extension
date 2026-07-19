@@ -21,5 +21,5 @@ export default async function TodosPage() {
   const name =
     (user.user_metadata?.full_name as string | undefined) ?? user.email?.split('@')[0] ?? 'there';
 
-  return <Todos initial={data ?? []} name={name} />;
+  return <Todos initial={data ?? []} name={name} email={user.email ?? ''} />;
 }
