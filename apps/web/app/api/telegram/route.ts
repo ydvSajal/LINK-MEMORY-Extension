@@ -26,6 +26,7 @@ async function send(botToken: string, chatId: number, text: string) {
 const HELP =
   'Recall bot:\n' +
   '• Send any link to save it (AI summary + tags)\n' +
+  '• Type a task ("buy milk tomorrow", "remind me to pay rent 2026-08-01") to add a to-do\n' +
   '• Ask anything in plain text to search your saves\n' +
   '• /recent — last 5 saves\n' +
   '• /search <words> — keyword search\n' +
@@ -51,6 +52,31 @@ function parseTodo(raw: string): { text: string; due: string | null } {
     text = raw.replace(/\btoday\b/i, '');
   }
   return { text: text.replace(/\s+/g, ' ').trim(), due };
+}
+
+// Does a plain message read as a to-do rather than a question about saves?
+// Cheap heuristics decide the obvious cases; the LLM breaks ties.
+async function looksLikeTask(
+  text: string,
+  override: Awaited<ReturnType<typeof loadAiOverride>>,
+): Promise<boolean> {
+  if (text.endsWith('?')) return false;
+  if (/^(what|who|when|where|why|how|which|did|do i|have i|find|search|show)\b/i.test(text)) return false;
+  if (/\b(\d{4}-\d{2}-\d{2}|today|tomorrow)\b/i.test(text)) return true;
+  if (/^(remind( me)?( to)?|buy|call|pay|send|book|schedule|finish|submit|email|fix|do|todo|task:?)\b/i.test(text))
+    return true;
+  try {
+    const verdict = await generateTextWithFallback({
+      system:
+        'Classify the user message as "task" (something they intend to do — a to-do, reminder, chore) ' +
+        'or "search" (a question or lookup about their saved links/notes). Reply with exactly one word: task or search.',
+      prompt: text,
+      override,
+    });
+    return verdict.trim().toLowerCase().startsWith('task');
+  } catch {
+    return false; // ponytail: on classifier failure fall through to search — the older, safer behavior
+  }
 }
 
 // POST /api/telegram — Telegram webhook. Auth = secret token header set at setWebhook time.
@@ -225,7 +251,25 @@ export async function POST(req: Request) {
         );
       }
 
-      // Plain question → answer from the user's saves.
+      // Plain text: task-sounding → to-do, otherwise answer from the user's saves.
+      const aiOverride = await loadAiOverride(db, userId);
+      if (await looksLikeTask(text, aiOverride)) {
+        const { text: task, due } = parseTodo(text.replace(/^(remind( me)?( to)?|todo|task:?)\s+/i, ''));
+        if (task) {
+          const { error } = await db.from('todos').insert({ user_id: userId, text: task, due_date: due });
+          if (error) return void (await send(BOT, chatId, `Could not add: ${error.message}`));
+          return void (
+            await send(
+              BOT,
+              chatId,
+              due
+                ? `Added to-do: ${task}\nDue ${due} — I'll remind you here that morning.`
+                : `Added to-do: ${task}`,
+            )
+          );
+        }
+      }
+
       const hits = await searchSaves(db, text, userId);
       const { data: recent } = await db
         .from('saves')
@@ -246,7 +290,7 @@ export async function POST(req: Request) {
           'Use ONLY the provided saves as context. Be concise. When you reference a save, include its URL. ' +
           'If nothing relevant is in the context, say so plainly.',
         prompt: `Question: ${text}\n\nMatching saves:\n${context || '(none)'}\n\nRecent saves:\n${recentCtx || '(none)'}`,
-        override: await loadAiOverride(db, userId),
+        override: aiOverride,
       });
       await send(BOT, chatId, answer.slice(0, 4000));
     } catch (e) {
