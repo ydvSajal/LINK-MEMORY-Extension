@@ -6,6 +6,7 @@ import { RecallClient } from '@recall/api-client';
 import type { Save, TagCount } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
 import Sidebar, { TYPES, SOURCES } from './sidebar';
+import Topbar from './topbar';
 
 type Filters = { tag: string | null; type: string | null; source: string | null; q: string; bin: boolean };
 
@@ -189,12 +190,12 @@ export default function Board({
   }, [loadMore, searching, cursor]);
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
-      <Sidebar tags={tags} filters={filters} profile={profile} />
-
-      <main className="min-w-0 flex-1">
-        <div className="flex items-center gap-3 border-b border-white/[.06] px-4 py-3.5 sm:px-6">
-          <div className="flex flex-1 items-center gap-2 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-1.5 focus-within:border-white/[.16]">
+    <div className="flex min-h-screen flex-col">
+      <Topbar
+        profile={profile}
+        filters={filters}
+        searchSlot={
+          <div className="flex w-full items-center gap-2 rounded-lg border border-white/[.08] bg-white/[.03] px-3 py-1.5 focus-within:border-white/[.16]">
             <span className="text-sm text-neutral-500" aria-hidden>
               ⌕
             </span>
@@ -209,7 +210,12 @@ export default function Board({
               ⌘K
             </kbd>
           </div>
-        </div>
+        }
+      />
+      <div className="flex flex-1 flex-col lg:flex-row">
+        <Sidebar tags={tags} filters={filters} />
+
+        <main className="min-w-0 flex-1">
 
         {/* Mobile filters — the sidebar covers these on desktop */}
         {!searching && (
@@ -238,7 +244,7 @@ export default function Board({
           </div>
         )}
 
-        <div className="p-4 sm:p-6">
+        <div className="p-3 sm:p-4">
           {filters.bin && (
             <p className="mb-4 text-xs text-neutral-500">
               Bin — cards here are deleted for good after {BIN_DAYS} days.
@@ -251,7 +257,7 @@ export default function Board({
               bin={filters.bin}
             />
           ) : (
-            <div className="columns-1 gap-3.5 [column-fill:_balance] sm:columns-2 xl:columns-3">
+            <div className="columns-1 gap-3 [column-fill:_balance] sm:columns-2 lg:columns-3 2xl:columns-4">
               {items.map((s) => (
                 <Card
                   key={s.id}
@@ -290,6 +296,7 @@ export default function Board({
           }}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -330,7 +337,7 @@ function Card({
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      className={`group mb-3.5 flex w-full break-inside-avoid flex-col overflow-hidden rounded-[10px] border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
+      className={`group mb-3 flex w-full break-inside-avoid flex-col overflow-hidden rounded-lg border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
         bin ? '' : 'cursor-pointer hover:bg-card-hover'
       }`}
     >
@@ -340,11 +347,11 @@ function Card({
           src={save.image_url}
           alt=""
           loading="lazy"
-          className="max-h-44 w-full border-b border-white/[.06] object-cover"
+          className="max-h-36 w-full border-b border-white/[.06] object-cover"
           onError={(e) => (e.currentTarget.style.display = 'none')}
         />
       )}
-      <div className="flex flex-col gap-2 p-3.5">
+      <div className="flex flex-col gap-1.5 p-3">
       <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         {save.domain && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -373,7 +380,7 @@ function Card({
           </button>
         )}
       </div>
-      <div className="line-clamp-2 text-sm font-semibold leading-[1.35] tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
+      <div className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
         {save.title || save.url}
       </div>
       <Summary save={save} />
@@ -409,13 +416,13 @@ function Card({
 
 function Summary({ save }: { save: Save }) {
   if (save.ai_summary)
-    return <p className="line-clamp-2 text-[12.5px] leading-normal text-neutral-400">{save.ai_summary}</p>;
+    return <p className="line-clamp-2 text-xs leading-normal text-neutral-400">{save.ai_summary}</p>;
   if (save.ai_status === 'pending')
     return <p className="animate-pulse text-xs text-neutral-500">Summarizing…</p>;
   if (save.ai_status === 'failed')
     return <p className="text-xs text-neutral-600">Summary unavailable — check AI keys in Settings.</p>;
   if (save.description)
-    return <p className="line-clamp-2 text-[12.5px] leading-normal text-neutral-400">{save.description}</p>;
+    return <p className="line-clamp-2 text-xs leading-normal text-neutral-400">{save.description}</p>;
   return null;
 }
 
