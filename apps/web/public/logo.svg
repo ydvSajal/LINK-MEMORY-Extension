@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#6b7280"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="#0a0a0a"/>
+  <!-- Circular recall arrow -->
+  <path d="M176 160a128 128 0 1 1-48 48" stroke="url(#g1)" stroke-width="40" stroke-linecap="round" fill="none"/>
+  <path d="M128 120l48 40-48 40" stroke="url(#g1)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Center dot (the saved memory) -->
+  <circle cx="272" cy="256" r="28" fill="url(#g1)"/>
+</svg>
