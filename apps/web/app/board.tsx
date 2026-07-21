@@ -53,6 +53,7 @@ export default function Board({
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Save | null>(null);
   const [search, setSearch] = useState(filters.q);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const searching = Boolean(filters.q.trim());
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +92,14 @@ export default function Board({
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
+
+  // Close bottom filter sheet on ESC
+  useEffect(() => {
+    if (!filterSheetOpen) return;
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && setFilterSheetOpen(false);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [filterSheetOpen]);
 
   // Live updates: Telegram saves and AI enrichment land while the page is open.
   // Any change to my saves → refetch the first page (RLS scopes the channel).
@@ -216,86 +225,173 @@ export default function Board({
         <Sidebar tags={tags} filters={filters} />
 
         <main className="min-w-0 flex-1">
+          {/* Mobile filters — the sidebar covers these on desktop */}
+          {!searching && (
+            <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-white/[.06] px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden">
+              <Chip
+                active={!filters.tag && !filters.type && !filters.source}
+                onClick={() => pushFilters({ tag: null, type: null, source: null, q: '', bin: false })}
+              >
+                All
+              </Chip>
+              {TYPES.map((t) => (
+                <Chip key={t} active={filters.type === t} onClick={() => toggle('type', t)}>
+                  {t}
+                </Chip>
+              ))}
+              {/* Currently active tag or source chip if selected */}
+              {filters.source && (
+                <Chip active onClick={() => toggle('source', filters.source!)}>
+                  {filters.source}
+                </Chip>
+              )}
+              {filters.tag && (
+                <Chip active onClick={() => toggle('tag', filters.tag!)}>
+                  #{filters.tag}
+                </Chip>
+              )}
+              <button
+                onClick={() => setFilterSheetOpen(true)}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-white/[.08] px-2.5 py-1 text-xs text-neutral-400 hover:border-white/[.20] hover:text-neutral-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                  <line x1="4" y1="21" x2="4" y2="14" />
+                  <line x1="4" y1="10" x2="4" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12" y2="3" />
+                  <line x1="20" y1="21" x2="20" y2="16" />
+                  <line x1="20" y1="12" x2="20" y2="3" />
+                  <line x1="1" y1="14" x2="7" y2="14" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="17" y1="16" x2="23" y2="16" />
+                </svg>
+                <span>Filters</span>
+              </button>
+            </div>
+          )}
 
-        {/* Mobile filters — the sidebar covers these on desktop */}
-        {!searching && (
-          <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] px-4 py-3 lg:hidden">
-            <Chip
-              active={!filters.tag && !filters.type && !filters.source}
-              onClick={() => pushFilters({ tag: null, type: null, source: null, q: '', bin: false })}
-            >
-              All
-            </Chip>
-            {TYPES.map((t) => (
-              <Chip key={t} active={filters.type === t} onClick={() => toggle('type', t)}>
-                {t}
-              </Chip>
-            ))}
-            {SOURCES.map((s) => (
-              <Chip key={s} active={filters.source === s} onClick={() => toggle('source', s)}>
-                {s}
-              </Chip>
-            ))}
-            {tags.map((t) => (
-              <Chip key={t.name} active={filters.tag === t.name} onClick={() => toggle('tag', t.name)}>
-                #{t.name} <span className="text-neutral-600">{t.count}</span>
-              </Chip>
-            ))}
+          <div className="p-3 sm:p-4">
+            {filters.bin && (
+              <p className="mb-4 text-xs text-neutral-500">
+                Bin — cards here are deleted for good after {BIN_DAYS} days.
+              </p>
+            )}
+            {items.length === 0 ? (
+              <EmptyState
+                searching={searching}
+                filtered={Boolean(filters.tag || filters.type || filters.source)}
+                bin={filters.bin}
+              />
+            ) : (
+              <div className="columns-1 gap-3 [column-fill:_balance] sm:columns-2 lg:columns-3 2xl:columns-4">
+                {items.map((s) => (
+                  <Card
+                    key={s.id}
+                    save={s}
+                    bin={filters.bin}
+                    onClick={() => !filters.bin && setSelected(s)}
+                    onDelete={() => softDelete(s.id)}
+                    onRestore={() => restore(s.id)}
+                    onDestroy={() => hardDelete(s.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {error && <p className="mt-4 text-center text-sm text-red-400">{error}</p>}
+            {!searching && cursor && (
+              <div ref={sentinel} className="py-8 text-center text-sm text-neutral-500">
+                {loading ? 'Loading…' : ''}
+              </div>
+            )}
+          </div>
+        </main>
+
+        {/* Mobile Filter Bottom Sheet */}
+        {filterSheetOpen && (
+          <div className="fixed inset-0 z-40 flex items-end lg:hidden" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setFilterSheetOpen(false)} />
+            <div className="relative flex max-h-[70vh] w-full flex-col overflow-y-auto rounded-t-2xl border-t border-white/[.10] bg-shell p-4">
+              <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/[.15]" />
+              <div className="flex items-center justify-between pb-2">
+                <h3 className="text-sm font-semibold text-neutral-200">Filters</h3>
+                <button
+                  onClick={() => setFilterSheetOpen(false)}
+                  className="text-neutral-500 hover:text-neutral-200"
+                  aria-label="Close filters"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-2 space-y-4">
+                <div>
+                  <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Sources</div>
+                  <div className="mt-1 space-y-0.5">
+                    {SOURCES.map((s) => {
+                      const active = filters.source === s;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            toggle('source', s);
+                            setFilterSheetOpen(false);
+                          }}
+                          className={`flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-sm transition-colors ${
+                            active ? 'bg-white/[.08] font-medium text-neutral-50' : 'text-neutral-400 hover:bg-white/[.04] hover:text-neutral-200'
+                          }`}
+                        >
+                          <span className="capitalize">{s}</span>
+                          {active && <span className="text-xs text-neutral-400">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Tags</div>
+                  <div className="mt-1 space-y-0.5">
+                    {tags.map((t) => {
+                      const active = filters.tag === t.name;
+                      return (
+                        <button
+                          key={t.name}
+                          onClick={() => {
+                            toggle('tag', t.name);
+                            setFilterSheetOpen(false);
+                          }}
+                          className={`flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-sm transition-colors ${
+                            active ? 'bg-white/[.08] font-medium text-neutral-50' : 'text-neutral-400 hover:bg-white/[.04] hover:text-neutral-200'
+                          }`}
+                        >
+                          <span>#{t.name}</span>
+                          <span className="text-xs text-neutral-500">{t.count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="p-3 sm:p-4">
-          {filters.bin && (
-            <p className="mb-4 text-xs text-neutral-500">
-              Bin — cards here are deleted for good after {BIN_DAYS} days.
-            </p>
-          )}
-          {items.length === 0 ? (
-            <EmptyState
-              searching={searching}
-              filtered={Boolean(filters.tag || filters.type || filters.source)}
-              bin={filters.bin}
-            />
-          ) : (
-            <div className="columns-1 gap-3 [column-fill:_balance] sm:columns-2 lg:columns-3 2xl:columns-4">
-              {items.map((s) => (
-                <Card
-                  key={s.id}
-                  save={s}
-                  bin={filters.bin}
-                  onClick={() => !filters.bin && setSelected(s)}
-                  onDelete={() => softDelete(s.id)}
-                  onRestore={() => restore(s.id)}
-                  onDestroy={() => hardDelete(s.id)}
-                />
-              ))}
-            </div>
-          )}
-
-          {error && <p className="mt-4 text-center text-sm text-red-400">{error}</p>}
-          {!searching && cursor && (
-            <div ref={sentinel} className="py-8 text-center text-sm text-neutral-500">
-              {loading ? 'Loading…' : ''}
-            </div>
-          )}
-        </div>
-      </main>
-
-      {selected && (
-        <Sheet
-          client={client}
-          save={selected}
-          onClose={() => setSelected(null)}
-          onSaved={(s) => {
-            setItems((prev) => prev.map((i) => (i.id === s.id ? s : i)));
-            setSelected(s);
-          }}
-          onDeleted={(id) => {
-            setItems((prev) => prev.filter((i) => i.id !== id));
-            setSelected(null);
-          }}
-        />
-      )}
+        {selected && (
+          <Sheet
+            client={client}
+            save={selected}
+            onClose={() => setSelected(null)}
+            onSaved={(s) => {
+              setItems((prev) => prev.map((i) => (i.id === s.id ? s : i)));
+              setSelected(s);
+            }}
+            onDeleted={(id) => {
+              setItems((prev) => prev.filter((i) => i.id !== id));
+              setSelected(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -305,7 +401,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+      className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition-colors ${
         active
           ? 'border-white/[.25] bg-white/[.08] text-neutral-50'
           : 'border-white/[.08] text-neutral-400 hover:border-white/[.20] hover:text-neutral-200'
@@ -352,63 +448,68 @@ function Card({
         />
       )}
       <div className="flex flex-col gap-1.5 p-3">
-      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-        {save.domain && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`}
-            alt=""
-            width={13}
-            height={13}
-            className="rounded-[3px]"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
+        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+          {save.domain && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`}
+              alt=""
+              width={13}
+              height={13}
+              className="rounded-[3px]"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          )}
+          <span className="truncate">{save.domain}</span>
+          <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
+          {!bin && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              aria-label="Move to bin"
+              title="Move to bin"
+              className="-m-2 p-2 text-neutral-600 opacity-100 transition-opacity hover:text-red-400 focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
+          {save.title || save.url}
+        </div>
+        <Summary save={save} />
+        {save.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {save.tags.slice(0, 3).map((t) => (
+              <span key={t} className="rounded bg-white/[.05] px-1.5 py-0.5 text-[11px] text-neutral-400">
+                {t}
+              </span>
+            ))}
+            {save.tags.length > 3 && (
+              <span className="rounded bg-white/[.05] px-1.5 py-0.5 text-[11px] text-neutral-500">
+                +{save.tags.length - 3}
+              </span>
+            )}
+          </div>
         )}
-        <span className="truncate">{save.domain}</span>
-        <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
-        {!bin && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            aria-label="Move to bin"
-            title="Move to bin"
-            className="-m-1 p-1 text-neutral-600 opacity-0 transition-opacity hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-      <div className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
-        {save.title || save.url}
-      </div>
-      <Summary save={save} />
-      {save.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {save.tags.map((t) => (
-            <span key={t} className="rounded bg-white/[.05] px-1.5 py-0.5 text-[11px] text-neutral-400">
-              {t}
+        {bin && (
+          <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
+            <button
+              onClick={onRestore}
+              className="rounded-md bg-white/[.06] px-2.5 py-1 text-neutral-200 hover:bg-white/[.10]"
+            >
+              Restore
+            </button>
+            <button onClick={onDestroy} className="rounded-md px-2 py-1 text-red-400/80 hover:text-red-400">
+              Delete forever
+            </button>
+            <span className="ml-auto text-neutral-600">
+              {save.deleted_at ? `gone in ${daysLeft(save.deleted_at)}d` : ''}
             </span>
-          ))}
-        </div>
-      )}
-      {bin && (
-        <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
-          <button
-            onClick={onRestore}
-            className="rounded-md bg-white/[.06] px-2.5 py-1 text-neutral-200 hover:bg-white/[.10]"
-          >
-            Restore
-          </button>
-          <button onClick={onDestroy} className="rounded-md px-2 py-1 text-red-400/80 hover:text-red-400">
-            Delete forever
-          </button>
-          <span className="ml-auto text-neutral-600">
-            {save.deleted_at ? `gone in ${daysLeft(save.deleted_at)}d` : ''}
-          </span>
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -501,9 +602,10 @@ function Sheet({
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex justify-end" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-20 flex items-end justify-end lg:items-stretch" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-white/[.08] bg-shell p-5">
+      <aside className="relative flex h-auto max-h-[85vh] w-full flex-col overflow-y-auto rounded-t-2xl border-t border-l-0 border-white/[.08] bg-shell p-5 lg:h-full lg:max-h-none lg:w-full lg:max-w-md lg:rounded-none lg:border-t-0 lg:border-l">
+        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/[.15] lg:hidden" />
         <div className="flex items-start justify-between gap-3">
           <div className="text-xs text-neutral-500">{save.domain}</div>
           <button onClick={onClose} className="text-neutral-500 hover:text-neutral-200" aria-label="Close">

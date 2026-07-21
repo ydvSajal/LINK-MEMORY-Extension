@@ -141,7 +141,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
           className="mt-5 w-full rounded-xl border border-white/[.08] bg-white/[.03] px-3 py-2.5 text-sm outline-none focus:border-white/[.20]"
         />
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 flex flex-col gap-2 sm:grid sm:grid-cols-3 sm:gap-3">
           {STATUSES.map((s) => {
             const active = statusFilter === s.key;
             const activeBorder = s.key === 'todo' ? 'border-red-500/40 bg-red-500/[.03]' :
@@ -152,17 +152,19 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
                 key={s.key}
                 onClick={() => setStatusFilter(active ? null : s.key)}
                 aria-pressed={active}
-                className={`relative overflow-hidden rounded-2xl border px-4 py-3.5 text-left transition-all ${
+                className={`relative overflow-hidden rounded-2xl border px-3 py-2 text-left transition-all sm:px-4 sm:py-3.5 ${
                   active ? activeBorder : 'border-white/[.08] bg-white/[.02] hover:border-white/[.16] hover:bg-white/[.04]'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className={`block h-2 w-2 rounded-full ${s.dot}`} />
-                  <span className="text-[13px] font-medium text-neutral-400">{s.label}</span>
+                <div className="flex items-center justify-between sm:flex-col sm:items-start">
+                  <div className="flex items-center gap-2">
+                    <span className={`block h-2 w-2 rounded-full ${s.dot}`} />
+                    <span className="text-[13px] font-medium text-neutral-400">{s.label}</span>
+                  </div>
+                  <span className={`text-base font-semibold tracking-tight sm:mt-2 sm:block sm:text-2xl ${active ? s.accent : 'text-neutral-200'}`}>
+                    {counts[s.key]}
+                  </span>
                 </div>
-                <span className={`mt-2 block text-2xl font-semibold tracking-tight ${active ? s.accent : 'text-neutral-200'}`}>
-                  {counts[s.key]}
-                </span>
               </button>
             );
           })}
@@ -179,7 +181,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
                   setSelected(day);
                   setDue(day);
                 }}
-                className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl py-2.5 transition-all ${
+                className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl py-2 sm:py-2.5 transition-all ${
                   isSelected ? 'bg-white/[.12] text-white shadow-sm ring-1 ring-white/[.05]' : 'text-neutral-500 hover:bg-white/[.04] hover:text-neutral-300'
                 }`}
               >
@@ -210,39 +212,80 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
         <Section title="No date" todos={undated} onCycle={cycle} onDelete={remove} />
         <Section title="Other days" todos={otherDays} onCycle={cycle} onDelete={remove} showDate />
 
-        {/* Breathing room at bottom before sticky form */}
-        <div className="h-24" />
-
-        <div className="pointer-events-none fixed inset-x-0 bottom-14 z-10 flex justify-center pb-6 lg:bottom-0 lg:ml-[220px]">
-          <div className="pointer-events-auto mx-4 flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-white/[.12] bg-shell/80 p-2 shadow-2xl backdrop-blur-xl">
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && add()}
-              placeholder="What needs doing?"
-              className="min-w-[200px] flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-neutral-500 outline-none"
-            />
-            <input
-              type="date"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-              className="rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-1.5 text-sm text-neutral-300 outline-none focus:border-white/[.20]"
-              aria-label="Due date"
-            />
-            <button
-              onClick={add}
-              disabled={!text.trim()}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              Add Task
-            </button>
-          </div>
-        </div>
-        {err && <p className="fixed bottom-[90px] right-8 z-20 text-sm text-red-400">{err}</p>}
-
-        <p className="mt-4 text-xs text-neutral-600">
+        <p className="mt-6 text-xs text-neutral-600">
           Tip: send <code className="rounded bg-white/[.06] px-1">/todo buy milk 2026-07-25</code> to the Telegram bot.
         </p>
+
+        {/* Breathing room at bottom before sticky form */}
+        <div className="h-28" />
+
+        <div className="pointer-events-none fixed inset-x-0 bottom-14 z-10 flex justify-center pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:bottom-0 lg:ml-[220px] lg:pb-6">
+          <div className="pointer-events-auto mx-4 flex w-full max-w-2xl flex-col gap-1 rounded-2xl border border-white/[.12] bg-shell/80 p-2 shadow-2xl backdrop-blur-xl">
+            {err && <p className="px-3 text-xs text-red-400">{err}</p>}
+            <div className="flex w-full items-center gap-2">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && add()}
+                placeholder="What needs doing?"
+                className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-neutral-500 outline-none"
+              />
+
+              {/* Desktop native date input */}
+              <input
+                type="date"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+                className="hidden rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-1.5 text-sm text-neutral-300 outline-none focus:border-white/[.20] lg:block"
+                aria-label="Due date"
+              />
+
+              {/* Mobile custom calendar button overlaying native date picker */}
+              <label
+                title={due}
+                className={`relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[.08] bg-white/[.04] lg:hidden ${
+                  due !== today ? 'text-amber-400' : 'text-neutral-400'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <input
+                  type="date"
+                  value={due}
+                  onChange={(e) => setDue(e.target.value)}
+                  className="absolute inset-0 opacity-0"
+                  aria-label="Due date"
+                />
+              </label>
+
+              {/* Desktop submit button */}
+              <button
+                onClick={add}
+                disabled={!text.trim()}
+                className="hidden rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-40 lg:block"
+              >
+                Add Task
+              </button>
+
+              {/* Mobile circular submit button */}
+              <button
+                onClick={add}
+                disabled={!text.trim()}
+                aria-label="Add task"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-40 lg:hidden"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
       </main>
     </div>
@@ -301,8 +344,10 @@ function Card({
         <button
           onClick={onCycle}
           aria-label={`Status: ${meta.label}. Click to advance.`}
-          className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full ${meta.dot} ring-4 ring-black/20`}
-        />
+          className="-m-2 p-2 focus:outline-none"
+        >
+          <span className={`block h-3.5 w-3.5 rounded-full ${meta.dot} ring-4 ring-black/20`} />
+        </button>
         <div className="min-w-0 flex-1">
           <p className={`text-[15px] font-medium leading-snug ${todo.status === 'done' ? 'text-neutral-500 line-through' : 'text-neutral-100'}`}>
             {todo.text}
@@ -318,7 +363,11 @@ function Card({
             )}
           </div>
         </div>
-        <button onClick={onDelete} className="text-neutral-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100" aria-label="Delete task">
+        <button
+          onClick={onDelete}
+          className="-m-2 p-2 text-neutral-600 opacity-100 transition-all hover:text-red-400 lg:opacity-0 lg:group-hover:opacity-100"
+          aria-label="Delete task"
+        >
           ✕
         </button>
       </div>
