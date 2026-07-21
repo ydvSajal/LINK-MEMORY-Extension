@@ -213,7 +213,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
         {/* Breathing room at bottom before sticky form */}
         <div className="h-24" />
 
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center pb-6 lg:ml-[220px]">
+        <div className="pointer-events-none fixed inset-x-0 bottom-14 z-10 flex justify-center pb-6 lg:bottom-0 lg:ml-[220px]">
           <div className="pointer-events-auto mx-4 flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-2xl border border-white/[.12] bg-shell/80 p-2 shadow-2xl backdrop-blur-xl">
             <input
               value={text}
