@@ -5,21 +5,17 @@ import { useSearchParams } from 'next/navigation';
 import type { Session } from '@supabase/supabase-js';
 import { browserClient } from '@/lib/supabase/client';
 
-// Extension id to relay the session to (set once the unpacked id is known).
-const EXT_ID = process.env.NEXT_PUBLIC_EXTENSION_ID;
-
-type ExtRuntime = {
-  runtime?: {
-    sendMessage?: (id: string, msg: unknown, cb?: () => void) => void;
-    lastError?: unknown;
-  };
-};
-
+// Relay the session to the extension via postMessage. The extension's login
+// content script listens on window and forwards it to its background — no
+// extension id or externally_connectable needed.
 function relayToExtension(session: Session) {
-  const c = (globalThis as { chrome?: ExtRuntime }).chrome;
-  if (EXT_ID && c?.runtime?.sendMessage) {
-    c.runtime.sendMessage(EXT_ID, { type: 'recall-session', session }, () => void c.runtime?.lastError);
-  }
+  window.postMessage(
+    {
+      recall: 'session',
+      session: { access_token: session.access_token, refresh_token: session.refresh_token },
+    },
+    window.location.origin,
+  );
 }
 
 function LoginInner() {

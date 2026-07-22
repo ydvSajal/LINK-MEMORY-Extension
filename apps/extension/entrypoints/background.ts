@@ -27,10 +27,13 @@ export default defineBackground(() => {
     if (cmd === 'save-page') openPopup();
   });
 
-  // Auth handoff: the web login page (externally_connectable) posts the session
-  // here after the user logs in. We persist it via supabase-js into chrome.storage.
-  chrome.runtime.onMessageExternal.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type !== 'recall-session' || !msg.session) return;
+  // Auth handoff: the login content script forwards the session here after the
+  // user logs in on the web. We persist it via supabase-js into chrome.storage.
+  const persistSession = (
+    msg: { type?: string; session?: { access_token: string; refresh_token: string } },
+    sendResponse: (r: { ok: boolean; error?: string }) => void,
+  ) => {
+    if (msg?.type !== 'recall-session' || !msg.session) return false;
     supabase()
       .auth.setSession({
         access_token: msg.session.access_token,
@@ -38,5 +41,7 @@ export default defineBackground(() => {
       })
       .then(({ error }) => sendResponse({ ok: !error, error: error?.message }));
     return true; // async response
-  });
+  };
+  chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => persistSession(msg, sendResponse));
+  chrome.runtime.onMessageExternal.addListener((msg, _s, sendResponse) => persistSession(msg, sendResponse));
 });

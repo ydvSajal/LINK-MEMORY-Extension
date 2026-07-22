@@ -99,6 +99,13 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
     if (error) setItems(prev);
   };
 
+  const reschedule = async (id: string, date: string) => {
+    const prev = items;
+    setItems(items.map((i) => (i.id === id ? { ...i, due_date: date } : i)));
+    const { error } = await supabase.from('todos').update({ due_date: date }).eq('id', id);
+    if (error) setItems(prev);
+  };
+
   const counts = useMemo(
     () => ({
       todo: items.filter((i) => i.status === 'todo').length,
@@ -108,7 +115,12 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
     [items],
   );
 
-  const dueToday = items.filter((i) => i.status !== 'done' && i.due_date === today).length;
+  const isToday = selected === today;
+  const isOpen = (i: Todo) => i.status !== 'done';
+  const isOverdue = (i: Todo) => isOpen(i) && !!i.due_date && i.due_date < today;
+  // Headline reflects what actually needs doing now: due today + anything overdue.
+  const overdueCount = items.filter(isOverdue).length;
+  const attention = items.filter((i) => isOpen(i) && i.due_date === today).length + overdueCount;
 
   // ponytail: filtering client-side — the whole list is already in memory.
   const visible = useMemo(() => {
@@ -120,9 +132,18 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
     );
   }, [items, q, statusFilter]);
 
-  const dayTasks = visible.filter((i) => i.due_date === selected);
-  const undated = visible.filter((i) => !i.due_date);
-  const otherDays = visible.filter((i) => i.due_date && i.due_date !== selected && i.status !== 'done');
+  const byDue = (a: Todo, b: Todo) => (a.due_date! < b.due_date! ? -1 : 1);
+  // Overdue is a "today" concern — surface it only on today's view, oldest first.
+  const overdue = isToday ? visible.filter(isOverdue).sort(byDue) : [];
+  const dayTasks = visible.filter((i) => i.due_date === selected && isOpen(i));
+  const undated = visible.filter((i) => !i.due_date && isOpen(i));
+  // Everything else open with a date: future ("Upcoming") on today's view, or any
+  // other day when browsing a specific day. Overdue is already broken out above.
+  const otherDays = visible
+    .filter((i) => isOpen(i) && i.due_date && i.due_date !== selected && !(isToday && i.due_date < today))
+    .sort(byDue);
+  // Completed tasks all collect here at the bottom instead of vanishing.
+  const done = visible.filter((i) => !isOpen(i));
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -131,8 +152,13 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
       <div className="mx-auto max-w-2xl px-4 py-6">
         <p className="text-sm text-neutral-500">{greet()}, {name}</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-neutral-100">
-          You have <span className="text-white">{dueToday} task{dueToday === 1 ? '' : 's'}</span> due today
+          You have <span className="text-white">{attention} task{attention === 1 ? '' : 's'}</span> due today
         </h1>
+        {overdueCount > 0 && (
+          <p className="mt-1 text-sm font-medium text-red-400">
+            {overdueCount} overdue — needs attention
+          </p>
+        )}
 
         <input
           value={q}
@@ -193,8 +219,28 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
           })}
         </div>
 
+        {overdue.length > 0 && (
+          <>
+            <h2 className="mt-6 flex items-center gap-2 text-sm font-semibold text-red-400">
+              <span className="h-2 w-2 rounded-full bg-red-500" /> Overdue
+            </h2>
+            <ul className="mt-3 space-y-2.5">
+              {overdue.map((t) => (
+                <Card
+                  key={t.id}
+                  todo={t}
+                  onCycle={() => cycle(t)}
+                  onDelete={() => remove(t.id)}
+                  onReschedule={() => reschedule(t.id, today)}
+                  showDate
+                />
+              ))}
+            </ul>
+          </>
+        )}
+
         <h2 className="mt-6 text-sm font-semibold">
-          {selected === today
+          {isToday
             ? "Today's tasks"
             : fmt(new Date(selected + 'T00:00:00'), { weekday: 'long', month: 'short', day: 'numeric' })}
         </h2>
@@ -210,7 +256,8 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
         )}
 
         <Section title="No date" todos={undated} onCycle={cycle} onDelete={remove} />
-        <Section title="Other days" todos={otherDays} onCycle={cycle} onDelete={remove} showDate />
+        <Section title={isToday ? 'Upcoming' : 'Other days'} todos={otherDays} onCycle={cycle} onDelete={remove} showDate />
+        <Section title="Done" todos={done} onCycle={cycle} onDelete={remove} showDate />
 
         <p className="mt-6 text-xs text-neutral-600">
           Tip: send <code className="rounded bg-white/[.06] px-1">/todo buy milk 2026-07-25</code> to the Telegram bot.
@@ -328,11 +375,13 @@ function Card({
   todo,
   onCycle,
   onDelete,
+  onReschedule,
   showDate,
 }: {
   todo: Todo;
   onCycle: () => void;
   onDelete: () => void;
+  onReschedule?: () => void;
   showDate?: boolean;
 }) {
   const meta = STATUSES.find((s) => s.key === todo.status)!;
@@ -356,10 +405,21 @@ function Card({
             <button onClick={onCycle} className={`${meta.accent} transition-opacity hover:opacity-80`}>
               {meta.label}
             </button>
+            {overdue && (
+              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">Overdue</span>
+            )}
             {showDate && todo.due_date && (
               <span className={overdue ? 'text-red-400' : 'text-neutral-500'}>
                 {fmt(new Date(todo.due_date + 'T00:00:00'), { day: 'numeric', month: 'short' })}
               </span>
+            )}
+            {onReschedule && (
+              <button
+                onClick={onReschedule}
+                className="rounded-full bg-white/[.06] px-2 py-0.5 normal-case tracking-normal text-neutral-300 transition-colors hover:bg-white/[.12] hover:text-white"
+              >
+                → Today
+              </button>
             )}
           </div>
         </div>

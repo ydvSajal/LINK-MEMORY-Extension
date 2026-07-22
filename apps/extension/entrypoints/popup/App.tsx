@@ -48,7 +48,7 @@ export function App() {
   return (
     <>
       <div className="topbar">
-        <span className="brand">Recall</span>
+        <span className="brand"><span className="mark" />Recall</span>
         {auth === 'in' && (
           <button className="ghost" onClick={openLibrary}>
             Library

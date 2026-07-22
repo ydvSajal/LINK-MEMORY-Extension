@@ -164,9 +164,20 @@ function Cards() {
 function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const favicon = `https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`;
+  const summary = save.ai_summary || save.description || '';
+  const longSummary = summary.length > 180; // ponytail: char heuristic, good enough for a "Show more" affordance
 
   return (
     <article className="lcard">
+      {save.image_url && (
+        <img
+          className="lcard-hero"
+          src={save.image_url}
+          alt=""
+          loading="lazy"
+          onError={(e) => (e.currentTarget.style.display = 'none')}
+        />
+      )}
       <div className="lcard-body">
         <div className="lcard-meta">
           <img src={favicon} alt="" width={14} height={14} />
@@ -177,35 +188,25 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
             ✕
           </button>
         </div>
-        <div className="lcard-top">
-          <a className="lcard-title" href={save.url} target="_blank" rel="noreferrer">
-            {save.title || save.url}
-          </a>
-          {save.image_url && (
-            <img
-              className="lcard-thumb"
-              src={save.image_url}
-              alt=""
-              loading="lazy"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          )}
-        </div>
-        {save.ai_summary ? (
-          <p className={`lcard-sum${open ? ' open' : ''}`} onClick={() => setOpen((v) => !v)}>
-            {save.ai_summary}
-          </p>
+        <a className="lcard-title" href={save.url} target="_blank" rel="noreferrer">
+          {save.title || save.url}
+        </a>
+        {summary ? (
+          <>
+            <p className={`lcard-sum${open ? ' open' : ''}`}>{summary}</p>
+            {longSummary && (
+              <button className="lcard-more" onClick={() => setOpen((v) => !v)}>
+                {open ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </>
         ) : save.ai_status === 'pending' ? (
           <p className="shimmer">Summarizing…</p>
-        ) : save.description ? (
-          <p className={`lcard-sum${open ? ' open' : ''}`} onClick={() => setOpen((v) => !v)}>
-            {save.description}
-          </p>
         ) : null}
         {save.note && <p className="lcard-note">{save.note}</p>}
         {save.tags.length > 0 && (
-          <div className="chips" style={{ marginTop: 6 }}>
-            {save.tags.slice(0, 4).map((t) => (
+          <div className="chips" style={{ marginTop: 8 }}>
+            {save.tags.map((t) => (
               <span className="chip" key={t}>{t}</span>
             ))}
           </div>
@@ -217,7 +218,7 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
 
 function SkeletonList() {
   return (
-    <div className="lib-body" aria-hidden>
+    <div className="skel-list" aria-hidden>
       {[0, 1, 2, 3].map((i) => (
         <div className="lcard" key={i}>
           <div className="lcard-body">
