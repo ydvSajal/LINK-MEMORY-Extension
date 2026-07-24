@@ -7,6 +7,8 @@ import { LoginPrompt } from './LoginPrompt';
 import { SaveForm } from './SaveForm';
 import { SavedCard } from './SavedCard';
 
+const APP_URL = import.meta.env.WXT_API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+
 type Auth = 'loading' | 'out' | 'in';
 
 export function App() {
@@ -32,6 +34,11 @@ export function App() {
     });
   };
 
+  const openSite = () => {
+    chrome.tabs.create({ url: APP_URL });
+    window.close();
+  };
+
   const body =
     auth === 'loading' ? (
       <div className="center muted">Loading…</div>
@@ -50,9 +57,18 @@ export function App() {
       <div className="topbar">
         <span className="brand"><span className="mark" />Recall</span>
         {auth === 'in' && (
-          <button className="ghost" onClick={openLibrary}>
-            Library
-          </button>
+          <div className="row">
+            <button className="ghost" onClick={openLibrary}>
+              Library
+            </button>
+            <button className="ghost icon" onClick={openSite} title="Open site" aria-label="Open site">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
       {body}

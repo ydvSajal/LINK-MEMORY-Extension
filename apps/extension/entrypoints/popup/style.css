@@ -117,6 +117,7 @@ button.ghost {
   font-size: 12px;
 }
 button.ghost:hover { background: var(--surface-2); color: var(--fg); filter: none; }
+button.ghost.icon { display: inline-flex; align-items: center; justify-content: center; padding: 6px; }
 button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 
 .row { display: flex; gap: 8px; align-items: center; }
