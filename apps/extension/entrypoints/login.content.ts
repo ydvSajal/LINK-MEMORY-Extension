@@ -6,8 +6,8 @@ export default defineContentScript({
   matches: ['http://localhost/*', 'https://*.vercel.app/*'],
   main() {
     window.addEventListener('message', (e) => {
-      if (e.source !== window || e.data?.recall !== 'session' || !e.data.session) return;
-      chrome.runtime.sendMessage({ type: 'recall-session', session: e.data.session });
+      if (e.source !== window || e.data?.recall !== 'session' || !e.data.token_hash) return;
+      chrome.runtime.sendMessage({ type: 'recall-session', token_hash: e.data.token_hash });
     });
   },
 });

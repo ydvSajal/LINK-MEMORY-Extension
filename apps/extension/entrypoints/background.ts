@@ -27,18 +27,17 @@ export default defineBackground(() => {
     if (cmd === 'save-page') openPopup();
   });
 
-  // Auth handoff: the login content script forwards the session here after the
-  // user logs in on the web. We persist it via supabase-js into chrome.storage.
+  // Auth handoff: the login content script forwards a single-use magic-link
+  // token here after the user logs in on the web. Redeeming it gives the
+  // extension its own session — sharing the site's refresh token instead made
+  // both sides fight over one rotating token and log each other out.
   const persistSession = (
-    msg: { type?: string; session?: { access_token: string; refresh_token: string } },
+    msg: { type?: string; token_hash?: string },
     sendResponse: (r: { ok: boolean; error?: string }) => void,
   ) => {
-    if (msg?.type !== 'recall-session' || !msg.session) return false;
+    if (msg?.type !== 'recall-session' || !msg.token_hash) return false;
     supabase()
-      .auth.setSession({
-        access_token: msg.session.access_token,
-        refresh_token: msg.session.refresh_token,
-      })
+      .auth.verifyOtp({ type: 'magiclink', token_hash: msg.token_hash })
       .then(({ error }) => sendResponse({ ok: !error, error: error?.message }));
     return true; // async response
   };

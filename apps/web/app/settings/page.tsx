@@ -233,6 +233,133 @@ function FirecrawlCard({ hasKey, authed, onSaved }: { hasKey: boolean; authed: A
   );
 }
 
+// VAPID public keys are base64url; PushManager wants raw bytes.
+function urlBase64ToUint8Array(base64: string) {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(padded);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+function NotificationsCard() {
+  const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const [state, setState] = useState<'loading' | 'unsupported' | 'off' | 'on' | 'denied'>('loading');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID)
+      return setState('unsupported');
+    if (Notification.permission === 'denied') return setState('denied');
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setState(sub ? 'on' : 'off'))
+      .catch(() => setState('off'));
+  }, [VAPID]);
+
+  const enable = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setState(permission === 'denied' ? 'denied' : 'off');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub =
+        (await reg.pushManager.getSubscription()) ??
+        (await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID!),
+        }));
+
+      const json = sub.toJSON();
+      const supabase = browserClient();
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) throw new Error('not logged in');
+
+      const { error } = await supabase.from('push_subscriptions').upsert(
+        {
+          user_id: auth.user.id,
+          endpoint: sub.endpoint,
+          p256dh: json.keys!.p256dh,
+          auth: json.keys!.auth,
+        },
+        { onConflict: 'endpoint' },
+      );
+      if (error) throw new Error(error.message);
+      setState('on');
+      setMsg('This device will get reminders.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await browserClient().from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setState('off');
+      setMsg('Reminders off on this device.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
+      <h2 className="font-medium">Notifications</h2>
+      <p className="mt-1 text-sm text-neutral-500">
+        Daily reminder for to-dos that are due or overdue, and for subscriptions ending in the next few days.
+        Each device needs enabling separately.
+      </p>
+
+      {state === 'unsupported' && (
+        <p className="mt-3 text-sm text-neutral-500">This browser can&apos;t do push notifications.</p>
+      )}
+      {state === 'denied' && (
+        <p className="mt-3 text-sm text-amber-400">
+          Notifications are blocked for this site — allow them in your browser&apos;s site settings, then reload.
+        </p>
+      )}
+      {state === 'off' && (
+        <button
+          onClick={enable}
+          disabled={busy}
+          className="mt-3 rounded-lg bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
+        >
+          {busy ? '…' : 'Enable push notifications'}
+        </button>
+      )}
+      {state === 'on' && (
+        <>
+          <p className="mt-3 text-sm text-emerald-400">Enabled on this device.</p>
+          <button onClick={disable} disabled={busy} className="mt-2 text-xs text-neutral-500 hover:text-red-400">
+            Turn off on this device
+          </button>
+        </>
+      )}
+
+      <p className="mt-3 text-xs text-neutral-600">
+        On iPhone, add Recall to your home screen first (Share → Add to Home Screen) — iOS only allows push for
+        installed apps.
+      </p>
+      {msg && <p className="mt-2 text-sm text-neutral-400">{msg}</p>}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const supabase = useMemo(() => browserClient(), []);
   const [s, setS] = useState<Settings | null>(null);
@@ -338,6 +465,8 @@ export default function SettingsPage() {
         authed={authed}
         onSaved={() => setS((prev) => (prev ? { ...prev, has_firecrawl_key: true } : prev))}
       />
+
+      <NotificationsCard />
 
       <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
         <h2 className="font-medium">Telegram bot</h2>

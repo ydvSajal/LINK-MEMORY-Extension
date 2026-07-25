@@ -15,6 +15,100 @@ const BIN_DAYS = 2;
 const daysLeft = (deletedAt: string) =>
   Math.max(0, Math.ceil((new Date(deletedAt).getTime() + BIN_DAYS * 86_400_000 - Date.now()) / 86_400_000));
 
+/**
+ * Masonry is the showcase layout; the other three trade image size for how much
+ * fits on screen. Stored per-browser — a layout preference isn't worth a round
+ * trip or a DB column.
+ */
+type View = 'masonry' | 'list' | 'grid' | 'dense';
+
+const VIEW_KEY = 'board-view';
+
+const CONTAINERS: Record<View, string> = {
+  masonry: 'columns-1 gap-3 [column-fill:_balance] sm:columns-2 lg:columns-3 2xl:columns-4',
+  list: 'flex flex-col gap-2',
+  grid: 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6',
+  dense: 'grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8',
+};
+
+const VIEWS: { key: View; label: string; icon: React.ReactNode }[] = [
+  {
+    key: 'masonry',
+    label: 'Showcase',
+    icon: (
+      <>
+        <rect x="3" y="3" width="7" height="9" rx="1" />
+        <rect x="14" y="3" width="7" height="5" rx="1" />
+        <rect x="3" y="16" width="7" height="5" rx="1" />
+        <rect x="14" y="12" width="7" height="9" rx="1" />
+      </>
+    ),
+  },
+  {
+    key: 'list',
+    label: 'List',
+    icon: (
+      <>
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </>
+    ),
+  },
+  {
+    key: 'grid',
+    label: 'Grid',
+    icon: (
+      <>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </>
+    ),
+  },
+  {
+    key: 'dense',
+    label: 'Dense',
+    icon: (
+      <>
+        <rect x="3" y="3" width="4" height="4" rx="1" />
+        <rect x="10" y="3" width="4" height="4" rx="1" />
+        <rect x="17" y="3" width="4" height="4" rx="1" />
+        <rect x="3" y="10" width="4" height="4" rx="1" />
+        <rect x="10" y="10" width="4" height="4" rx="1" />
+        <rect x="17" y="10" width="4" height="4" rx="1" />
+        <rect x="3" y="17" width="4" height="4" rx="1" />
+        <rect x="10" y="17" width="4" height="4" rx="1" />
+        <rect x="17" y="17" width="4" height="4" rx="1" />
+      </>
+    ),
+  },
+];
+
+function ViewSwitcher({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-white/[.08] p-0.5">
+      {VIEWS.map((v) => (
+        <button
+          key={v.key}
+          onClick={() => onChange(v.key)}
+          aria-label={`${v.label} layout`}
+          aria-pressed={view === v.key}
+          title={v.label}
+          className={`rounded-md p-1.5 transition-colors ${
+            view === v.key ? 'bg-white/[.10] text-neutral-100' : 'text-neutral-500 hover:text-neutral-300'
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            {v.icon}
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const age = (iso: string) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
@@ -56,6 +150,18 @@ export default function Board({
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const searching = Boolean(filters.q.trim());
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Read after mount, not in the initializer — localStorage doesn't exist on the
+  // server and a mismatch would break hydration.
+  const [view, setView] = useState<View>('masonry');
+  useEffect(() => {
+    const saved = localStorage.getItem(VIEW_KEY) as View | null;
+    if (saved && saved in CONTAINERS) setView(saved);
+  }, []);
+  const pickView = (v: View) => {
+    setView(v);
+    localStorage.setItem(VIEW_KEY, v);
+  };
 
   const pushFilters = useCallback(
     (f: Filters) => {
@@ -271,11 +377,16 @@ export default function Board({
           )}
 
           <div className="p-3 sm:p-4">
-            {filters.bin && (
-              <p className="mb-4 text-xs text-neutral-500">
-                Bin — cards here are deleted for good after {BIN_DAYS} days.
-              </p>
-            )}
+            <div className="mb-3 flex items-center justify-between gap-3">
+              {filters.bin ? (
+                <p className="text-xs text-neutral-500">
+                  Bin — cards here are deleted for good after {BIN_DAYS} days.
+                </p>
+              ) : (
+                <span />
+              )}
+              <ViewSwitcher view={view} onChange={pickView} />
+            </div>
             {items.length === 0 ? (
               <EmptyState
                 searching={searching}
@@ -283,11 +394,12 @@ export default function Board({
                 bin={filters.bin}
               />
             ) : (
-              <div className="columns-1 gap-3 [column-fill:_balance] sm:columns-2 lg:columns-3 2xl:columns-4">
+              <div className={CONTAINERS[view]}>
                 {items.map((s) => (
                   <Card
                     key={s.id}
                     save={s}
+                    view={view}
                     bin={filters.bin}
                     onClick={() => !filters.bin && setSelected(s)}
                     onDelete={() => softDelete(s.id)}
@@ -412,7 +524,56 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-function Card({
+function Favicon({ domain, size = 13 }: { domain: string; size?: number }) {
+  if (!domain) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+      alt=""
+      width={size}
+      height={size}
+      className="rounded-[3px]"
+      onError={(e) => (e.currentTarget.style.display = 'none')}
+    />
+  );
+}
+
+function BinActions({ save, onRestore, onDestroy }: { save: Save; onRestore: () => void; onDestroy: () => void }) {
+  return (
+    <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
+      <button
+        onClick={onRestore}
+        className="rounded-md bg-white/[.06] px-2.5 py-1 text-neutral-200 hover:bg-white/[.10]"
+      >
+        Restore
+      </button>
+      <button onClick={onDestroy} className="rounded-md px-2 py-1 text-red-400/80 hover:text-red-400">
+        Delete forever
+      </button>
+      <span className="ml-auto text-neutral-600">
+        {save.deleted_at ? `gone in ${daysLeft(save.deleted_at)}d` : ''}
+      </span>
+    </div>
+  );
+}
+
+function Card(props: {
+  save: Save;
+  view: View;
+  bin: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+  onDestroy: () => void;
+}) {
+  if (props.view === 'list') return <ListCard {...props} />;
+  if (props.view === 'grid') return <GridCard {...props} />;
+  if (props.view === 'dense') return <DenseCard {...props} />;
+  return <MasonryCard {...props} />;
+}
+
+function MasonryCard({
   save,
   bin,
   onClick,
@@ -449,17 +610,7 @@ function Card({
       )}
       <div className="flex flex-col gap-1.5 p-3">
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          {save.domain && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`}
-              alt=""
-              width={13}
-              height={13}
-              className="rounded-[3px]"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          )}
+          <Favicon domain={save.domain} />
           <span className="truncate">{save.domain}</span>
           <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
           {!bin && (
@@ -494,23 +645,206 @@ function Card({
             )}
           </div>
         )}
-        {bin && (
-          <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
-            <button
-              onClick={onRestore}
-              className="rounded-md bg-white/[.06] px-2.5 py-1 text-neutral-200 hover:bg-white/[.10]"
-            >
-              Restore
-            </button>
-            <button onClick={onDestroy} className="rounded-md px-2 py-1 text-red-400/80 hover:text-red-400">
-              Delete forever
-            </button>
-            <span className="ml-auto text-neutral-600">
-              {save.deleted_at ? `gone in ${daysLeft(save.deleted_at)}d` : ''}
-            </span>
+        {bin && <BinActions save={save} onRestore={onRestore} onDestroy={onDestroy} />}
+      </div>
+    </div>
+  );
+}
+
+/** Compact row: small thumbnail, one-line title, meta on the side. */
+function ListCard({
+  save,
+  bin,
+  onClick,
+  onDelete,
+  onRestore,
+  onDestroy,
+}: {
+  save: Save;
+  bin: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+  onDestroy: () => void;
+}) {
+  return (
+    <div
+      role={bin ? undefined : 'button'}
+      tabIndex={bin ? undefined : 0}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={`group flex w-full flex-col rounded-lg border border-white/[.07] bg-card px-2.5 py-2 text-left transition-colors hover:border-white/[.16] ${
+        bin ? '' : 'cursor-pointer hover:bg-card-hover'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md bg-white/[.04]">
+          {save.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={save.image_url}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          ) : (
+            <Favicon domain={save.domain} size={18} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold leading-snug tracking-[-0.01em] text-neutral-50">
+            {save.title || save.url}
           </div>
+          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-neutral-500">
+            <span className="truncate">{save.domain}</span>
+            {save.tags.slice(0, 2).map((t) => (
+              <span key={t} className="hidden shrink-0 rounded bg-white/[.05] px-1.5 py-0.5 text-neutral-400 sm:inline">
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span className="shrink-0 text-[11px] text-neutral-700">{age(save.created_at)}</span>
+        {!bin && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Move to bin"
+            title="Move to bin"
+            className="-m-2 shrink-0 p-2 text-neutral-600 transition-opacity hover:text-red-400 focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+          >
+            ✕
+          </button>
         )}
       </div>
+      {bin && <BinActions save={save} onRestore={onRestore} onDestroy={onDestroy} />}
+    </div>
+  );
+}
+
+/** Square tile: image fills it, title sits on a gradient at the bottom. */
+function GridCard({
+  save,
+  bin,
+  onClick,
+  onDelete,
+  onRestore,
+  onDestroy,
+}: {
+  save: Save;
+  bin: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+  onDestroy: () => void;
+}) {
+  return (
+    <div
+      role={bin ? undefined : 'button'}
+      tabIndex={bin ? undefined : 0}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={`group flex flex-col overflow-hidden rounded-lg border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
+        bin ? '' : 'cursor-pointer hover:bg-card-hover'
+      }`}
+    >
+      {/* The title sits on the gradient whether or not there's an image — an
+          image that 404s hides itself and would otherwise leave a blank tile. */}
+      <div className="relative aspect-square w-full overflow-hidden bg-white/[.03]">
+        {save.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={save.image_url}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
+        )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-2 pt-8">
+          <div className="line-clamp-3 text-[12px] font-semibold leading-snug text-white [overflow-wrap:anywhere]">
+            {save.title || save.url}
+          </div>
+        </div>
+        {!bin && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Move to bin"
+            title="Move to bin"
+            className="absolute right-1 top-1 rounded-md bg-black/50 px-1.5 py-0.5 text-xs text-neutral-300 opacity-100 transition-opacity hover:text-red-400 lg:opacity-0 lg:group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-neutral-500">
+        <Favicon domain={save.domain} size={12} />
+        <span className="truncate">{save.domain}</span>
+        <span className="ml-auto shrink-0 text-neutral-700">{age(save.created_at)}</span>
+      </div>
+      {bin && (
+        <div className="px-2 pb-2">
+          <BinActions save={save} onRestore={onRestore} onDestroy={onDestroy} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Text-only cube: the most cards per screen, no images at all. */
+function DenseCard({
+  save,
+  bin,
+  onClick,
+  onDelete,
+  onRestore,
+  onDestroy,
+}: {
+  save: Save;
+  bin: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+  onDestroy: () => void;
+}) {
+  return (
+    <div
+      role={bin ? undefined : 'button'}
+      tabIndex={bin ? undefined : 0}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={`group flex flex-col rounded-lg border border-white/[.07] bg-card p-2 text-left transition-colors hover:border-white/[.16] ${
+        bin ? '' : 'cursor-pointer hover:bg-card-hover'
+      }`}
+    >
+      <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
+        <Favicon domain={save.domain} size={11} />
+        <span className="truncate">{save.domain}</span>
+        {!bin && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Move to bin"
+            title="Move to bin"
+            className="-m-1.5 ml-auto p-1.5 text-neutral-600 transition-opacity hover:text-red-400 lg:opacity-0 lg:group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="mt-1 line-clamp-3 text-[12px] font-medium leading-snug text-neutral-100 [overflow-wrap:anywhere]">
+        {save.title || save.url}
+      </div>
+      <span className="mt-auto pt-1.5 text-[10px] text-neutral-700">{age(save.created_at)}</span>
+      {bin && <BinActions save={save} onRestore={onRestore} onDestroy={onDestroy} />}
     </div>
   );
 }

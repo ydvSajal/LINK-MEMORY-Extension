@@ -10,19 +10,17 @@ export function LoginPrompt() {
 
   const openLogin = () => chrome.tabs.create({ url: `${APP_URL}/login?ext=1` });
 
-  // Fallback path if externally_connectable messaging misbehaves: paste the
-  // session JSON the login page prints, and set it directly.
+  // Fallback path if the content-script relay misbehaves: paste the token the
+  // login page prints and redeem it here.
   const paste = async () => {
     setErr('');
     try {
-      const s = JSON.parse(raw);
-      const { error } = await supabase().auth.setSession({
-        access_token: s.access_token,
-        refresh_token: s.refresh_token,
-      });
+      const token_hash = JSON.parse(raw).token_hash;
+      if (!token_hash) return setErr('No token_hash in that JSON.');
+      const { error } = await supabase().auth.verifyOtp({ type: 'magiclink', token_hash });
       if (error) setErr(error.message);
     } catch {
-      setErr('Not valid session JSON.');
+      setErr('Not valid token JSON.');
     }
   };
 
@@ -37,7 +35,7 @@ export function LoginPrompt() {
       </div>
       {showPaste && (
         <div className="mt">
-          <textarea placeholder='{"access_token":"…","refresh_token":"…"}' value={raw} onChange={(e) => setRaw(e.target.value)} />
+          <textarea placeholder='{"token_hash":"…"}' value={raw} onChange={(e) => setRaw(e.target.value)} />
           <button className="mt" onClick={paste}>Set session</button>
         </div>
       )}

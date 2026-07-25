@@ -2,8 +2,9 @@ import { after } from 'next/server';
 import { adminClient } from '@/lib/supabase/server';
 import { domainFromUrl, guessContentType, attachTags, searchSaves } from '@/lib/api';
 import { enrich } from '@/lib/ai/enrich';
-import { generateTextWithFallback } from '@/lib/ai/provider';
+import { generateTextWithFallback, generateWithFallback } from '@/lib/ai/provider';
 import { loadAiOverride, loadFirecrawlKey } from '@/lib/ai/settings';
+import { SubscriptionExtract } from '@recall/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -27,12 +28,14 @@ const HELP =
   'Recall bot:\n' +
   '• Send any link to save it (AI summary + tags)\n' +
   '• Type a task ("buy milk tomorrow", "remind me to pay rent 2026-08-01") to add a to-do\n' +
+  '• Name a subscription ("netflix ends 5th august 499rs monthly") to track it\n' +
   '• Ask anything in plain text to search your saves\n' +
   '• /recent — last 5 saves\n' +
   '• /search <words> — keyword search\n' +
   '• /todo <task> [YYYY-MM-DD] — add a to-do (date → daily reminder)\n' +
   '• /todos — list open to-dos\n' +
   '• /done <n> — mark to-do n as done\n' +
+  '• /subs — list tracked subscriptions\n' +
   '• /link <code> — connect your account (code from Settings on the site)';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -75,35 +78,56 @@ function parseTodo(raw: string): { text: string; due: string | null } {
   return { text: text.replace(/\s+/g, ' ').trim(), due };
 }
 
-// Does a plain message read as a to-do rather than a question about saves?
-// Cheap heuristics decide the obvious cases; the LLM breaks ties.
-async function looksLikeTask(
+type Intent = 'task' | 'search' | 'subscription';
+
+// What does a plain message want? Cheap heuristics decide the obvious cases;
+// the LLM breaks ties between a to-do, a subscription and a library question.
+async function classifyIntent(
   text: string,
   override: Awaited<ReturnType<typeof loadAiOverride>>,
-): Promise<boolean> {
-  if (text.endsWith('?')) return false;
-  if (/^(what|who|when|where|why|how|which|did|do i|have i|find|search|show)\b/i.test(text)) return false;
-  if (
-    /\b(\d{4}-\d{2}-\d{2}|today|tomorrow|in \d+ days?|\d{1,2}(st|nd|rd|th)|\d{1,2} of (this|next) month|next (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i.test(
-      text,
-    )
-  )
-    return true;
+): Promise<Intent> {
+  if (text.endsWith('?')) return 'search';
+  if (/^(what|who|when|where|why|how|which|did|do i|have i|find|search|show)\b/i.test(text)) return 'search';
   if (/^(remind( me)?( to)?|buy|call|pay|send|book|schedule|finish|submit|email|fix|do|todo|task:?)\b/i.test(text))
-    return true;
+    return 'task';
   try {
     const verdict = await generateTextWithFallback({
       system:
-        'Classify the user message as "task" (something they intend to do — a to-do, reminder, chore) ' +
-        'or "search" (a question or lookup about their saved links/notes). Reply with exactly one word: task or search.',
+        'Classify the user message as exactly one word:\n' +
+        'task — something they intend to do (a to-do, reminder, chore)\n' +
+        'subscription — a recurring paid service they are tracking; names a service alongside a price, ' +
+        'renewal, expiry or end date (e.g. "netflix ends 5th august 499rs monthly", "spotify renews on the 12th")\n' +
+        'search — a question or lookup about their saved links/notes\n' +
+        'Reply with exactly one word: task, subscription, or search.',
       prompt: text,
       override,
     });
-    return verdict.trim().toLowerCase().startsWith('task');
+    const v = verdict.trim().toLowerCase();
+    if (v.startsWith('subscription')) return 'subscription';
+    if (v.startsWith('task')) return 'task';
+    return 'search';
   } catch {
-    return false; // ponytail: on classifier failure fall through to search — the older, safer behavior
+    // ponytail: on classifier failure fall through to search — the older, safer behavior
+    return /\b(\d{4}-\d{2}-\d{2}|today|tomorrow|in \d+ days?|\d{1,2}(st|nd|rd|th))\b/i.test(text)
+      ? 'task'
+      : 'search';
   }
 }
+
+const CURRENCY_SYMBOL: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£', JPY: '¥' };
+
+const describeSub = (s: {
+  name: string;
+  price: number | null;
+  currency: string | null;
+  billing_cycle: string | null;
+  end_date: string;
+}) => {
+  const amount =
+    s.price == null ? '' : ` — ${CURRENCY_SYMBOL[s.currency ?? ''] ?? `${s.currency ?? ''} `}${s.price}`;
+  const cycle = s.billing_cycle && s.billing_cycle !== 'once' ? ` ${s.billing_cycle}` : '';
+  return `${s.name}${amount}${cycle}, ends ${s.end_date}`;
+};
 
 // POST /api/telegram — Telegram webhook. Auth = secret token header set at setWebhook time.
 export async function POST(req: Request) {
@@ -256,6 +280,20 @@ export async function POST(req: Request) {
         return void (await send(BOT, chatId, `Done: ${target.text} ✓`));
       }
 
+      if (text.startsWith('/subs')) {
+        const { data } = await db
+          .from('subscriptions')
+          .select('name, price, currency, billing_cycle, end_date')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('end_date', { ascending: true });
+        if (!data?.length)
+          return void (await send(BOT, chatId, 'Nothing tracked. Try: netflix ends 5th august 499rs monthly'));
+        return void (
+          await send(BOT, chatId, data.map((s, i) => `${i + 1}. ${describeSub(s)}`).join('\n'))
+        );
+      }
+
       if (text.startsWith('/recent')) {
         const { data } = await db
           .from('saves')
@@ -277,9 +315,56 @@ export async function POST(req: Request) {
         );
       }
 
-      // Plain text: task-sounding → to-do, otherwise answer from the user's saves.
+      // Plain text: a to-do, a subscription, or a question about the library.
       const aiOverride = await loadAiOverride(db, userId);
-      if (await looksLikeTask(text, aiOverride)) {
+      const intent = await classifyIntent(text, aiOverride);
+
+      if (intent === 'subscription') {
+        const today = new Date();
+        const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        try {
+          const { object } = await generateWithFallback({
+            schema: SubscriptionExtract,
+            system:
+              `Extract subscription details from the message. Today is ${todayIso}.\n` +
+              'Resolve relative or partial dates ("5th august", "next month", "the 12th") to YYYY-MM-DD, ' +
+              'choosing the next future occurrence when the year is omitted. ' +
+              'price is the numeric amount only. currency is an ISO code — rs/₹/rupees means INR. ' +
+              'Use null for anything the message does not state.',
+            prompt: text,
+            override: aiOverride,
+          });
+
+          if (!object.end_date)
+            return void (
+              await send(
+                BOT,
+                chatId,
+                `When does ${object.name} end or renew? Send it again with a date, e.g. "${object.name} ends 5th august".`,
+              )
+            );
+
+          const row = {
+            user_id: userId,
+            name: object.name,
+            price: object.price,
+            currency: object.currency,
+            billing_cycle: object.billing_cycle,
+            end_date: object.end_date,
+          };
+          const { error } = await db.from('subscriptions').insert(row);
+          if (error) return void (await send(BOT, chatId, `Could not track that: ${error.message}`));
+          return void (
+            await send(BOT, chatId, `Tracking ${describeSub(row)}.\nI'll remind you 3 days before and on the day.`)
+          );
+        } catch {
+          return void (
+            await send(BOT, chatId, "Couldn't read that subscription — try: netflix ends 5th august 499rs monthly")
+          );
+        }
+      }
+
+      if (intent === 'task') {
         const { text: task, due } = parseTodo(text.replace(/^(remind( me)?( to)?|todo|task:?)\s+/i, ''));
         if (task) {
           const { error } = await db.from('todos').insert({ user_id: userId, text: task, due_date: due });

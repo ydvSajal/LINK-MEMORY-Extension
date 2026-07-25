@@ -39,6 +39,16 @@ function TodosIcon() {
   );
 }
 
+function SubsIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h4" />
+    </svg>
+  );
+}
+
 function BinIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -106,6 +116,9 @@ export default function Topbar({
             <NavItem href="/todos" active={pathname.startsWith('/todos')}>
               To-dos
             </NavItem>
+            <NavItem href="/subscriptions" active={pathname.startsWith('/subscriptions')}>
+              Subscriptions
+            </NavItem>
             <NavItem href="/?bin=1" active={Boolean(filters?.bin)}>
               Bin
             </NavItem>
@@ -137,6 +150,9 @@ export default function Topbar({
         </MobileNavItem>
         <MobileNavItem href="/todos" active={pathname.startsWith('/todos')} icon={<TodosIcon />}>
           To-dos
+        </MobileNavItem>
+        <MobileNavItem href="/subscriptions" active={pathname.startsWith('/subscriptions')} icon={<SubsIcon />}>
+          Subs
         </MobileNavItem>
         <MobileNavItem href="/?bin=1" active={Boolean(filters?.bin)} icon={<BinIcon />}>
           Bin

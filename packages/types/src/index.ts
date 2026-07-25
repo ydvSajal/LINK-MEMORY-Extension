@@ -62,3 +62,35 @@ export type EnrichResult = z.infer<typeof EnrichResult>;
 
 export const TagCount = z.object({ name: z.string(), count: z.number().int() });
 export type TagCount = z.infer<typeof TagCount>;
+
+export const BillingCycle = z.enum(['monthly', 'yearly', 'weekly', 'once']);
+export type BillingCycle = z.infer<typeof BillingCycle>;
+
+export const SubscriptionStatus = z.enum(['active', 'cancelled']);
+export type SubscriptionStatus = z.infer<typeof SubscriptionStatus>;
+
+/** A tracked paid subscription. `end_date` is when it renews or runs out. */
+export const SubscriptionSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  name: z.string(),
+  price: z.number().nullable(),
+  currency: z.string().nullable(),
+  billing_cycle: BillingCycle.nullable(),
+  end_date: z.string(),
+  notes: z.string(),
+  status: SubscriptionStatus,
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type Subscription = z.infer<typeof SubscriptionSchema>;
+
+/** What the model pulls out of a free-text Telegram message. */
+export const SubscriptionExtract = z.object({
+  name: z.string().describe('the service name, e.g. Netflix'),
+  price: z.number().nullable().describe('numeric amount only, null if not stated'),
+  currency: z.string().nullable().describe('ISO code, e.g. INR, USD. null if not stated'),
+  billing_cycle: BillingCycle.nullable().describe('null if not stated'),
+  end_date: z.string().nullable().describe('YYYY-MM-DD when it renews or ends, null if not stated'),
+});
+export type SubscriptionExtract = z.infer<typeof SubscriptionExtract>;

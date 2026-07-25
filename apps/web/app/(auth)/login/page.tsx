@@ -5,17 +5,26 @@ import { useSearchParams } from 'next/navigation';
 import type { Session } from '@supabase/supabase-js';
 import { browserClient } from '@/lib/supabase/client';
 
-// Relay the session to the extension via postMessage. The extension's login
-// content script listens on window and forwards it to its background — no
-// extension id or externally_connectable needed.
-function relayToExtension(session: Session) {
-  window.postMessage(
-    {
-      recall: 'session',
-      session: { access_token: session.access_token, refresh_token: session.refresh_token },
-    },
-    window.location.origin,
-  );
+// Mint a single-use token the extension redeems for its own session, and relay
+// it via postMessage. The extension's login content script listens on window and
+// forwards it to its background — no extension id or externally_connectable
+// needed.
+//
+// We deliberately do NOT hand over this session's refresh token: Supabase
+// rotates refresh tokens on use and revokes the family on reuse, so sharing one
+// between the site and the extension logs whichever side refreshed last out.
+async function mintExtensionToken(session: Session): Promise<string> {
+  const res = await fetch('/api/v1/ext-token', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  const body = await res.json();
+  if (!res.ok || !body.token_hash) throw new Error(body.error ?? 'could not mint token');
+  return body.token_hash as string;
+}
+
+function relayToExtension(tokenHash: string) {
+  window.postMessage({ recall: 'session', token_hash: tokenHash }, window.location.origin);
 }
 
 function LoginInner() {
@@ -25,6 +34,7 @@ function LoginInner() {
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [session, setSession] = useState<Session | null>(null);
+  const [extToken, setExtToken] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +45,18 @@ function LoginInner() {
   }, [supabase]);
 
   useEffect(() => {
-    if (session && forExt) relayToExtension(session);
+    if (!session || !forExt) return;
+    let cancelled = false;
+    mintExtensionToken(session)
+      .then((hash) => {
+        if (cancelled) return;
+        setExtToken(hash);
+        relayToExtension(hash);
+      })
+      .catch((e) => !cancelled && setErr(e.message));
+    return () => {
+      cancelled = true;
+    };
   }, [session, forExt]);
 
   const submit = async () => {
@@ -56,10 +77,6 @@ function LoginInner() {
     });
 
   if (session) {
-    const payload = JSON.stringify({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 p-8">
         <h1 className="text-2xl font-semibold">Logged in ✓</h1>
@@ -73,8 +90,9 @@ function LoginInner() {
               readOnly
               onFocus={(e) => e.currentTarget.select()}
               className="h-28 w-full rounded-lg border border-white/[.08] bg-white/[.03] p-2 font-mono text-xs"
-              value={payload}
+              value={extToken ? JSON.stringify({ token_hash: extToken }) : 'Preparing token…'}
             />
+            {err && <p className="text-sm text-red-400">{err}</p>}
           </>
         ) : (
           <a className="text-neutral-200 underline decoration-neutral-600 underline-offset-2 hover:text-white" href="/">Go to your cards →</a>
