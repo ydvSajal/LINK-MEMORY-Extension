@@ -20,6 +20,7 @@ flowchart TB
         API["/api/v1<br/>saves · tags · search · settings · ext-token"]
         HOOK["/api/telegram<br/>webhook"]
         CRON["/api/cron/todo-reminders<br/>daily 03:30 UTC"]
+        ENRICH["lib/ai<br/>summary + tags"]
     end
 
     subgraph sb["Supabase"]
@@ -48,18 +49,17 @@ flowchart TB
 
     MW --> AUTH
     API --> AUTH
-    EXT --> AUTH
 
-    API --> AI
-    API --> FC
-    HOOK --> AI
-    HOOK --> FC
+    API --> ENRICH
+    HOOK --> ENRICH
+    ENRICH --> AI
+    ENRICH --> FC
 
     CRON --> PUSH --> PWA
     CRON --> BOTAPI
 ```
 
-There is no separate backend or bot service — the API, the Telegram webhook and the cron are all Next.js route handlers in `apps/web`, and the web app is itself the PWA. Pages and the browser client talk to Postgres directly under row-level security; only the webhook and cron use the service-role key, because they run without a user session.
+There is no separate backend or bot service — the API, the Telegram webhook and the cron are all Next.js route handlers in `apps/web`, and the web app is itself the PWA. Pages and the browser client talk to Postgres directly under row-level security; only the webhook and cron use the service-role key, because they run without a user session. The extension keeps a Supabase session of its own, obtained once at login through the single-use token from `/api/v1/ext-token` — it never shares the website's refresh token, since Supabase rotates those and the two clients would invalidate each other.
 
 Every save goes through the same pipeline: store instantly → enrich in the background (scrape page text if thin → summarize → auto-tag) → card appears in the library with a 2-sentence summary and 3–5 tags that converge instead of fragmenting.
 
