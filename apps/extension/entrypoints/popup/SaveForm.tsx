@@ -10,6 +10,7 @@ export function SaveForm({ meta, onSaved }: { meta: PageMeta; onSaved: (s: Creat
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [todo, setTodo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +42,11 @@ export function SaveForm({ meta, onSaved }: { meta: PageMeta; onSaved: (s: Creat
         page_text: meta.pageText || undefined,
         source: 'extension',
       });
+      // Dateless to-do — a reminder to come back to this page, not a deadline.
+      if (todo)
+        await recall
+          .createTodo({ text: title.trim() || meta.url, url: meta.url })
+          .catch(() => {}); // the save already landed; don't fail the flow over the reminder
       onSaved(s);
     } catch (e) {
       setErr(e instanceof RecallError ? e.message : 'Save failed — try again.');
@@ -96,8 +102,16 @@ export function SaveForm({ meta, onSaved }: { meta: PageMeta; onSaved: (s: Creat
         </div>
       )}
 
+      <label className="toggle">
+        <input type="checkbox" checked={todo} onChange={(e) => setTodo(e.target.checked)} />
+        Remind me to read this
+        <span className="muted">· adds a to-do, no date</span>
+      </label>
+
       <div className="row mt">
-        <button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : todo ? 'Save + Remind' : 'Save'}
+        </button>
         <span className="muted" style={{ fontSize: 12 }}>⌘/Ctrl+Enter</span>
       </div>
       {err && <div className="error">{err}</div>}

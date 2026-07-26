@@ -94,3 +94,24 @@ export const SubscriptionExtract = z.object({
   end_date: z.string().nullable().describe('YYYY-MM-DD when it renews or ends, null if not stated'),
 });
 export type SubscriptionExtract = z.infer<typeof SubscriptionExtract>;
+
+/** POST /todos body. `due_date` null (the default) = a reminder with no date. */
+export const CreateTodoInput = z.object({
+  text: z.string().min(1).max(500),
+  url: z.string().url().nullable().optional(),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+});
+export type CreateTodoInput = z.infer<typeof CreateTodoInput>;
+
+export const TodoStatus = z.enum(['todo', 'progress', 'done']);
+export type TodoStatus = z.infer<typeof TodoStatus>;
+
+export type Todo = {
+  id: string;
+  text: string;
+  url: string | null;
+  due_date: string | null;
+  done: boolean;
+  status: TodoStatus;
+  created_at: string;
+};

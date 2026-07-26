@@ -1,4 +1,4 @@
-import type { Save, CreateSaveInput, UpdateSaveInput, TagCount } from '@recall/types';
+import type { Save, CreateSaveInput, UpdateSaveInput, TagCount, CreateTodoInput, Todo } from '@recall/types';
 
 export type RecallClientOptions = {
   baseUrl: string; // e.g. http://localhost:3000/api/v1
@@ -67,6 +67,10 @@ export class RecallClient {
 
   enrich(id: string): Promise<{ ai_summary: string; tags: string[]; ai_status: string }> {
     return this.req(`/saves/${id}/enrich`, { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  createTodo(input: CreateTodoInput): Promise<Todo> {
+    return this.req('/todos', { method: 'POST', body: JSON.stringify(input) });
   }
 
   listTags(): Promise<{ tags: TagCount[] }> {

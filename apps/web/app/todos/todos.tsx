@@ -9,6 +9,7 @@ export type Status = 'todo' | 'progress' | 'done';
 export type Todo = {
   id: string;
   text: string;
+  url: string | null;
   due_date: string | null;
   done: boolean;
   status: Status;
@@ -44,6 +45,14 @@ const weekOf = (day: string) => {
   });
 };
 
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+};
+
 const greet = () => {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -76,7 +85,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
     const { data, error } = await supabase
       .from('todos')
       .insert({ user_id: user.id, text: t, due_date: due || null })
-      .select('id, text, due_date, done, status, created_at')
+      .select('id, text, url, due_date, done, status, created_at')
       .single();
     if (error || !data) return setErr(error?.message ?? 'Add failed.');
     setItems([data, ...items]);
@@ -402,6 +411,17 @@ function Card({
             {todo.text}
           </p>
           <div className="mt-1.5 flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-wider">
+            {todo.url && (
+              <a
+                href={todo.url}
+                target="_blank"
+                rel="noreferrer"
+                className="max-w-[45%] truncate rounded-full bg-white/[.06] px-2 py-0.5 normal-case tracking-normal text-neutral-300 transition-colors hover:bg-white/[.12] hover:text-white"
+                title={todo.url}
+              >
+                ↗ {hostOf(todo.url)}
+              </a>
+            )}
             <button onClick={onCycle} className={`${meta.accent} transition-opacity hover:opacity-80`}>
               {meta.label}
             </button>
