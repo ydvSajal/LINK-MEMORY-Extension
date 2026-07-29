@@ -26,6 +26,7 @@ export const SaveSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   deleted_at: z.string().nullable().default(null),
+  pinned_at: z.string().nullable().default(null), // set = pinned above the feed
   tags: z.array(z.string()).default([]),
 });
 export type Save = z.infer<typeof SaveSchema>;
@@ -50,6 +51,7 @@ export const UpdateSaveInput = z.object({
   note: z.string().max(5000).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   restore: z.boolean().optional(), // pull a card back out of the bin
+  pinned: z.boolean().optional(), // true pins the card to the top, false unpins
 });
 export type UpdateSaveInput = z.infer<typeof UpdateSaveInput>;
 

@@ -114,26 +114,47 @@ export async function querySaves(
 ): Promise<{ items: Save[]; next_cursor: string | null }> {
   await purgeExpired(db);
   const limit = Math.min(p.limit ?? 20, 50);
-  let q = db.from('saves').select(SAVE_SELECT).order('created_at', { ascending: false }).limit(limit);
-  q = p.bin ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
-  if (p.cursor) q = q.lt('created_at', p.cursor);
-  if (p.type) q = q.eq('content_type', p.type);
-  if (p.source) q = q.eq('source', p.source);
+
+  let tagIds: string[] | null = null;
   if (p.tag) {
     // saves that have this tag — resolve tag id first (RLS-scoped)
     const { data: tagRow } = await db.from('tags').select('id').eq('name', p.tag).maybeSingle();
     if (!tagRow) return { items: [], next_cursor: null };
     const { data: links } = await db.from('save_tags').select('save_id').eq('tag_id', tagRow.id);
-    const ids = (links ?? []).map((l) => l.save_id);
-    if (ids.length === 0) return { items: [], next_cursor: null };
-    q = q.in('id', ids);
+    tagIds = (links ?? []).map((l) => l.save_id);
+    if (tagIds.length === 0) return { items: [], next_cursor: null };
   }
+
+  const base = () => {
+    let q = db.from('saves').select(SAVE_SELECT);
+    q = p.bin ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
+    if (p.type) q = q.eq('content_type', p.type);
+    if (p.source) q = q.eq('source', p.source);
+    if (tagIds) q = q.in('id', tagIds);
+    return q;
+  };
+
+  // Pinned cards ride on top of the first page only, and the paged query below
+  // excludes them — that keeps the created_at cursor a straight line instead of
+  // having to encode "pinned first" into it. The bin ignores pins entirely.
+  let pinned: Save[] = [];
+  if (!p.bin && !p.cursor) {
+    const { data } = await base()
+      .not('pinned_at', 'is', null)
+      .order('pinned_at', { ascending: false })
+      .limit(50);
+    pinned = (data ?? []).map(serializeSave);
+  }
+
+  let q = base().order('created_at', { ascending: false }).limit(limit);
+  if (!p.bin) q = q.is('pinned_at', null);
+  if (p.cursor) q = q.lt('created_at', p.cursor);
 
   const { data, error } = await q;
   if (error) throw new ApiError(500, error.message);
   const items = (data ?? []).map(serializeSave);
   const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
-  return { items, next_cursor };
+  return { items: [...pinned, ...items], next_cursor };
 }
 
 /**
@@ -151,6 +172,7 @@ export async function searchSaves(db: SupabaseClient, query: string, userId?: st
     .select(SAVE_SELECT)
     .is('deleted_at', null)
     .or(`title.ilike.${like},ai_summary.ilike.${like},note.ilike.${like}`)
+    .order('pinned_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .limit(50);
   if (userId) q = q.eq('user_id', userId);

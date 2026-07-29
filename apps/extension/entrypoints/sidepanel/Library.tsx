@@ -96,6 +96,22 @@ function Cards() {
     return () => io.disconnect();
   }, [loadMore, cursor]);
 
+  // Pinned first; Array#sort is stable so the rest keeps the server's order.
+  const togglePin = async (save: Save) => {
+    const prev = items;
+    const pinned_at = save.pinned_at ? null : new Date().toISOString();
+    setItems(
+      [...items.map((s) => (s.id === save.id ? { ...s, pinned_at } : s))].sort(
+        (a, b) => Number(Boolean(b.pinned_at)) - Number(Boolean(a.pinned_at)),
+      ),
+    );
+    try {
+      await recall.updateSave(save.id, { pinned: !save.pinned_at });
+    } catch {
+      setItems(prev);
+    }
+  };
+
   const remove = async (id: string) => {
     const prev = items;
     setItems(items.filter((s) => s.id !== id)); // optimistic
@@ -154,21 +170,23 @@ function Cards() {
           </div>
         )}
         {state === 'ok' &&
-          items.map((s) => <LibCard key={s.id} save={s} onDelete={() => remove(s.id)} />)}
+          items.map((s) => (
+            <LibCard key={s.id} save={s} onPin={() => togglePin(s)} onDelete={() => remove(s.id)} />
+          ))}
         {cursor && <div ref={sentinel} className="center muted" style={{ padding: 12 }}>{more ? 'Loading…' : ''}</div>}
       </div>
     </div>
   );
 }
 
-function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
+function LibCard({ save, onPin, onDelete }: { save: Save; onPin: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const favicon = `https://www.google.com/s2/favicons?domain=${save.domain}&sz=32`;
   const summary = save.ai_summary || save.description || '';
   const longSummary = summary.length > 180; // ponytail: char heuristic, good enough for a "Show more" affordance
 
   return (
-    <article className="lcard">
+    <article className="lcard" style={save.pinned_at ? { borderColor: 'rgba(251,191,36,.35)' } : undefined}>
       {save.image_url && (
         <img
           className="lcard-hero"
@@ -184,6 +202,16 @@ function LibCard({ save, onDelete }: { save: Save; onDelete: () => void }) {
           <span>{save.domain}</span>
           <span className="dot-sep">·</span>
           <time>{new Date(save.created_at).toLocaleDateString()}</time>
+          <button
+            className="lcard-x"
+            style={{ opacity: save.pinned_at ? 1 : 0.4 }}
+            onClick={onPin}
+            aria-pressed={Boolean(save.pinned_at)}
+            aria-label={save.pinned_at ? 'Unpin' : 'Pin to top'}
+            title={save.pinned_at ? 'Unpin' : 'Pin to top'}
+          >
+            📌
+          </button>
           <button className="lcard-x" onClick={onDelete} aria-label="Move to bin" title="Move to bin">
             ✕
           </button>

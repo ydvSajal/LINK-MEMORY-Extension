@@ -32,6 +32,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (body.title !== undefined) patch.title = body.title;
     if (body.note !== undefined) patch.note = body.note;
     if (body.restore) patch.deleted_at = null;
+    if (body.pinned !== undefined) patch.pinned_at = body.pinned ? new Date().toISOString() : null;
 
     const { data, error } = await db.from('saves').update(patch).eq('id', id).select('id').maybeSingle();
     if (error) return json({ error: error.message }, 500);

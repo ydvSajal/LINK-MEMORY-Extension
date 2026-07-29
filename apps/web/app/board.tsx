@@ -109,6 +109,10 @@ function ViewSwitcher({ view, onChange }: { view: View; onChange: (v: View) => v
   );
 }
 
+/** Pinned first, everything else untouched — Array#sort is stable. */
+const sortPinned = (list: Save[]) =>
+  [...list].sort((a, b) => Number(Boolean(b.pinned_at)) - Number(Boolean(a.pinned_at)));
+
 const age = (iso: string) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
@@ -274,6 +278,17 @@ export default function Board({
     }
   };
 
+  const togglePin = async (save: Save) => {
+    const prev = items;
+    const pinned_at = save.pinned_at ? null : new Date().toISOString();
+    setItems((p) => sortPinned(p.map((i) => (i.id === save.id ? { ...i, pinned_at } : i))));
+    try {
+      await client.updateSave(save.id, { pinned: !save.pinned_at });
+    } catch {
+      setItems(prev);
+    }
+  };
+
   const restore = async (id: string) => {
     const prev = items;
     setItems((p) => p.filter((i) => i.id !== id));
@@ -402,6 +417,7 @@ export default function Board({
                     view={view}
                     bin={filters.bin}
                     onClick={() => !filters.bin && setSelected(s)}
+                    onPin={() => togglePin(s)}
                     onDelete={() => softDelete(s.id)}
                     onRestore={() => restore(s.id)}
                     onDestroy={() => hardDelete(s.id)}
@@ -539,6 +555,39 @@ function Favicon({ domain, size = 13 }: { domain: string; size?: number }) {
   );
 }
 
+/** Pin toggle. Always visible while pinned, hover-only otherwise (like ✕). */
+function PinButton({ save, onPin, className = '' }: { save: Save; onPin: () => void; className?: string }) {
+  const pinned = Boolean(save.pinned_at);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onPin();
+      }}
+      aria-label={pinned ? 'Unpin' : 'Pin to top'}
+      aria-pressed={pinned}
+      title={pinned ? 'Unpin' : 'Pin to top'}
+      className={`shrink-0 transition-opacity ${
+        pinned ? 'text-amber-400 hover:text-amber-300' : 'text-neutral-600 hover:text-neutral-300 lg:opacity-0 lg:group-hover:opacity-100'
+      } ${className}`}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill={pinned ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-3.5 w-3.5"
+      >
+        <line x1="12" y1="17" x2="12" y2="22" />
+        <path d="M9 2h6l-1 7 3.4 3.4a1 1 0 0 1-.7 1.6H7.3a1 1 0 0 1-.7-1.6L10 9 9 2z" />
+      </svg>
+    </button>
+  );
+}
+
 function BinActions({ save, onRestore, onDestroy }: { save: Save; onRestore: () => void; onDestroy: () => void }) {
   return (
     <div className="mt-1 flex items-center gap-2 border-t border-white/[.06] pt-2.5 text-xs">
@@ -558,45 +607,33 @@ function BinActions({ save, onRestore, onDestroy }: { save: Save; onRestore: () 
   );
 }
 
-function Card(props: {
+type CardProps = {
   save: Save;
-  view: View;
   bin: boolean;
   onClick: () => void;
+  onPin: () => void;
   onDelete: () => void;
   onRestore: () => void;
   onDestroy: () => void;
-}) {
+};
+
+function Card(props: CardProps & { view: View }) {
   if (props.view === 'list') return <ListCard {...props} />;
   if (props.view === 'grid') return <GridCard {...props} />;
   if (props.view === 'dense') return <DenseCard {...props} />;
   return <MasonryCard {...props} />;
 }
 
-function MasonryCard({
-  save,
-  bin,
-  onClick,
-  onDelete,
-  onRestore,
-  onDestroy,
-}: {
-  save: Save;
-  bin: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRestore: () => void;
-  onDestroy: () => void;
-}) {
+function MasonryCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      className={`group mb-3 flex w-full break-inside-avoid flex-col overflow-hidden rounded-lg border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
-        bin ? '' : 'cursor-pointer hover:bg-card-hover'
-      }`}
+      className={`group mb-3 flex w-full break-inside-avoid flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-white/[.16] ${
+        save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
+      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       {save.image_url && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -614,17 +651,20 @@ function MasonryCard({
           <span className="truncate">{save.domain}</span>
           <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
           {!bin && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              aria-label="Move to bin"
-              title="Move to bin"
-              className="-m-2 p-2 text-neutral-600 opacity-100 transition-opacity hover:text-red-400 focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-            >
-              ✕
-            </button>
+            <>
+              <PinButton save={save} onPin={onPin} className="-m-1 p-1" />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                aria-label="Move to bin"
+                title="Move to bin"
+                className="-m-2 p-2 text-neutral-600 opacity-100 transition-opacity hover:text-red-400 focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </>
           )}
         </div>
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-[-0.01em] text-neutral-50 [overflow-wrap:anywhere]">
@@ -652,30 +692,16 @@ function MasonryCard({
 }
 
 /** Compact row: small thumbnail, one-line title, meta on the side. */
-function ListCard({
-  save,
-  bin,
-  onClick,
-  onDelete,
-  onRestore,
-  onDestroy,
-}: {
-  save: Save;
-  bin: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRestore: () => void;
-  onDestroy: () => void;
-}) {
+function ListCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      className={`group flex w-full flex-col rounded-lg border border-white/[.07] bg-card px-2.5 py-2 text-left transition-colors hover:border-white/[.16] ${
-        bin ? '' : 'cursor-pointer hover:bg-card-hover'
-      }`}
+      className={`group flex w-full flex-col rounded-lg border bg-card px-2.5 py-2 text-left transition-colors hover:border-white/[.16] ${
+        save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
+      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       <div className="flex items-center gap-3">
         <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md bg-white/[.04]">
@@ -706,6 +732,7 @@ function ListCard({
           </div>
         </div>
         <span className="shrink-0 text-[11px] text-neutral-700">{age(save.created_at)}</span>
+        {!bin && <PinButton save={save} onPin={onPin} className="-m-1 p-1" />}
         {!bin && (
           <button
             onClick={(e) => {
@@ -726,30 +753,16 @@ function ListCard({
 }
 
 /** Square tile: image fills it, title sits on a gradient at the bottom. */
-function GridCard({
-  save,
-  bin,
-  onClick,
-  onDelete,
-  onRestore,
-  onDestroy,
-}: {
-  save: Save;
-  bin: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRestore: () => void;
-  onDestroy: () => void;
-}) {
+function GridCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      className={`group flex flex-col overflow-hidden rounded-lg border border-white/[.07] bg-card text-left transition-colors hover:border-white/[.16] ${
-        bin ? '' : 'cursor-pointer hover:bg-card-hover'
-      }`}
+      className={`group flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-white/[.16] ${
+        save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
+      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       {/* The title sits on the gradient whether or not there's an image — an
           image that 404s hides itself and would otherwise leave a blank tile. */}
@@ -770,17 +783,20 @@ function GridCard({
           </div>
         </div>
         {!bin && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            aria-label="Move to bin"
-            title="Move to bin"
-            className="absolute right-1 top-1 rounded-md bg-black/50 px-1.5 py-0.5 text-xs text-neutral-300 opacity-100 transition-opacity hover:text-red-400 lg:opacity-0 lg:group-hover:opacity-100"
-          >
-            ✕
-          </button>
+          <>
+            <PinButton save={save} onPin={onPin} className="absolute left-1 top-1 rounded-md bg-black/50 p-1" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              aria-label="Move to bin"
+              title="Move to bin"
+              className="absolute right-1 top-1 rounded-md bg-black/50 px-1.5 py-0.5 text-xs text-neutral-300 opacity-100 transition-opacity hover:text-red-400 lg:opacity-0 lg:group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          </>
         )}
       </div>
       <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-neutral-500">
@@ -798,34 +814,21 @@ function GridCard({
 }
 
 /** Text-only cube: the most cards per screen, no images at all. */
-function DenseCard({
-  save,
-  bin,
-  onClick,
-  onDelete,
-  onRestore,
-  onDestroy,
-}: {
-  save: Save;
-  bin: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRestore: () => void;
-  onDestroy: () => void;
-}) {
+function DenseCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      className={`group flex flex-col rounded-lg border border-white/[.07] bg-card p-2 text-left transition-colors hover:border-white/[.16] ${
-        bin ? '' : 'cursor-pointer hover:bg-card-hover'
-      }`}
+      className={`group flex flex-col rounded-lg border bg-card p-2 text-left transition-colors hover:border-white/[.16] ${
+        save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
+      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
         <Favicon domain={save.domain} size={11} />
         <span className="truncate">{save.domain}</span>
+        {!bin && <PinButton save={save} onPin={onPin} className="-m-1 ml-auto p-1" />}
         {!bin && (
           <button
             onClick={(e) => {
