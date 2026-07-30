@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { BillingCycle as Cycle } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
+import { isoDate as iso, CURRENCY_SYMBOL as SYMBOLS } from '@/lib/util';
 import Topbar from '../topbar';
-
-type Cycle = 'monthly' | 'yearly' | 'weekly' | 'once';
 
 export type Sub = {
   id: string;
@@ -18,11 +18,6 @@ export type Sub = {
 };
 
 const CYCLES: Cycle[] = ['monthly', 'yearly', 'weekly', 'once'];
-const SYMBOLS: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£', JPY: '¥' };
-
-// Local calendar date as YYYY-MM-DD (toISOString would shift by timezone).
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const fmtDate = (day: string) =>
   new Date(day + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });

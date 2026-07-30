@@ -1,22 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { Todo, TodoStatus } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
+import { isoDate as iso, domainFromUrl } from '@/lib/util';
 import Topbar from '../topbar';
 
-export type Status = 'todo' | 'progress' | 'done';
-
-export type Todo = {
-  id: string;
-  text: string;
-  url: string | null;
-  due_date: string | null;
-  done: boolean;
-  status: Status;
-  created_at: string;
-};
-
-const STATUSES: { key: Status; label: string; accent: string; dot: string }[] = [
+const STATUSES: { key: TodoStatus; label: string; accent: string; dot: string }[] = [
   { key: 'todo', label: 'To-Do', accent: 'text-red-400', dot: 'bg-red-500' },
   { key: 'progress', label: 'Progress', accent: 'text-amber-400', dot: 'bg-amber-500' },
   { key: 'done', label: 'Done', accent: 'text-emerald-400', dot: 'bg-emerald-500' },
@@ -24,11 +14,7 @@ const STATUSES: { key: Status; label: string; accent: string; dot: string }[] = 
 
 
 
-const NEXT: Record<Status, Status> = { todo: 'progress', progress: 'done', done: 'todo' };
-
-// Local calendar date as YYYY-MM-DD (toISOString would shift by timezone).
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const NEXT: Record<TodoStatus, TodoStatus> = { todo: 'progress', progress: 'done', done: 'todo' };
 
 // Fixed locale + unambiguous order: a bare toLocaleDateString() renders in the
 // server's locale then re-renders in the browser's, which trips hydration.
@@ -45,13 +31,7 @@ const weekOf = (day: string) => {
   });
 };
 
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-};
+const hostOf = (url: string) => domainFromUrl(url) || url;
 
 const greet = () => {
   const h = new Date().getHours();
@@ -68,7 +48,7 @@ export default function Todos({ initial, name, email }: { initial: Todo[]; name:
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Status | null>(null);
+  const [statusFilter, setStatusFilter] = useState<TodoStatus | null>(null);
 
   const today = iso(new Date());
   const [selected, setSelected] = useState(today);

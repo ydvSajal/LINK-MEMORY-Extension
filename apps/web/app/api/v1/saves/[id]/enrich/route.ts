@@ -44,7 +44,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const { data: tagRows } = await db.from('tags').select('name');
     const existingTags = (tagRows ?? []).map((t) => t.name);
 
-    const { object } = await enrich({
+    const { object, embedding } = await enrich({
       title: save.title,
       description: save.description,
       note: save.note,
@@ -57,7 +57,12 @@ export async function POST(req: Request, { params }: Ctx) {
 
     await db
       .from('saves')
-      .update({ ai_summary: object.summary, ai_status: 'done', updated_at: new Date().toISOString() })
+      .update({
+        ai_summary: object.summary,
+        ai_status: 'done',
+        embedding,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id);
     await attachTags(db, user.id, id, object.tags);
 

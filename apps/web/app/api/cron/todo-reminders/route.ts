@@ -1,13 +1,9 @@
 import { adminClient } from '@/lib/supabase/server';
 import { sendPushToUser } from '@/lib/push';
+import { isoDate as localIso, CURRENCY_SYMBOL } from '@/lib/util';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-
-const CURRENCY_SYMBOL: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£', JPY: '¥' };
-
-const localIso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 type Bucket = { todos: string[]; subs: string[] };
 

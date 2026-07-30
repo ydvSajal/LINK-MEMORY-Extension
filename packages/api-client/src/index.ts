@@ -1,4 +1,12 @@
-import type { Save, CreateSaveInput, UpdateSaveInput, TagCount, CreateTodoInput, Todo } from '@recall/types';
+import type {
+  Save,
+  CreateSaveInput,
+  UpdateSaveInput,
+  BulkSaveInput,
+  TagCount,
+  CreateTodoInput,
+  Todo,
+} from '@recall/types';
 
 export type RecallClientOptions = {
   baseUrl: string; // e.g. http://localhost:3000/api/v1
@@ -61,12 +69,23 @@ export class RecallClient {
     return this.req(`/saves/${id}${opts.hard ? '?hard=1' : ''}`, { method: 'DELETE' });
   }
 
-  restoreSave(id: string): Promise<Save> {
-    return this.req(`/saves/${id}`, { method: 'PATCH', body: JSON.stringify({ restore: true }) });
+  /** One action across many cards, in a single request. */
+  bulkSaves(input: BulkSaveInput): Promise<{ ok: boolean; count: number }> {
+    return this.req('/saves', { method: 'PATCH', body: JSON.stringify(input) });
   }
 
-  enrich(id: string): Promise<{ ai_summary: string; tags: string[]; ai_status: string }> {
-    return this.req(`/saves/${id}/enrich`, { method: 'POST', body: JSON.stringify({}) });
+  /** Saves closest in meaning to this one. Empty until it has an embedding. */
+  relatedSaves(id: string): Promise<{ items: Save[] }> {
+    return this.req(`/saves/${id}/related`);
+  }
+
+  /** Index one batch of saves saved before semantic search existed. */
+  indexEmbeddings(): Promise<{ indexed: number; remaining: number }> {
+    return this.req('/embeddings', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  embeddingStatus(): Promise<{ remaining: number }> {
+    return this.req('/embeddings');
   }
 
   createTodo(input: CreateTodoInput): Promise<Todo> {

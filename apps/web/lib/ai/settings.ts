@@ -15,6 +15,17 @@ export async function loadAiOverride(db: SupabaseClient, userId: string): Promis
   };
 }
 
+/**
+ * User's Gemini key, for embeddings. `userId` is only needed with the
+ * service-role client — an RLS-scoped client already sees just one row.
+ */
+export async function loadGeminiKey(db: SupabaseClient, userId?: string): Promise<string | null> {
+  let q = db.from('user_settings').select('gemini_api_key');
+  if (userId) q = q.eq('user_id', userId);
+  const { data } = await q.maybeSingle();
+  return data?.gemini_api_key ?? null;
+}
+
 /** User's Firecrawl key (null = fall back to env FIRECRAWL_API_KEY, if any). */
 export async function loadFirecrawlKey(db: SupabaseClient, userId: string): Promise<string | null> {
   const { data } = await db

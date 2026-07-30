@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ApiError } from './auth';
+import { domainFromUrl } from './util';
+import { embedText } from './ai/embed';
+import { loadGeminiKey } from './ai/settings';
 import type { Save, ContentType, TagCount } from '@recall/types';
 
 export function json(data: unknown, status = 200) {
@@ -24,13 +27,7 @@ export async function parseJson(req: Request): Promise<unknown> {
   }
 }
 
-export function domainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
+export { domainFromUrl };
 
 /** Cheap heuristic; AI can refine content_type later if needed. */
 export function guessContentType(url: string): ContentType {
@@ -158,7 +155,14 @@ export async function querySaves(
 }
 
 /**
- * Keyword search over title/summary/note. Shared by GET /search and the grid.
+ * Hybrid search over the user's saves: exact keyword matches first, then
+ * semantic neighbours the keywords missed.
+ *
+ * Keyword-only would miss "that piece about rate limiting" when the page never
+ * says those words; embedding-only loses exact title matches to whatever is
+ * merely on-topic. Keeping keyword hits on top means this can only ever add
+ * results to what the old search returned.
+ *
  * `userId` is required when db is the service-role client (no RLS scoping).
  */
 export async function searchSaves(db: SupabaseClient, query: string, userId?: string): Promise<Save[]> {
@@ -178,7 +182,80 @@ export async function searchSaves(db: SupabaseClient, query: string, userId?: st
   if (userId) q = q.eq('user_id', userId);
   const { data, error } = await q;
   if (error) throw new ApiError(500, error.message);
-  return (data ?? []).map(serializeSave);
+  const keyword = (data ?? []).map(serializeSave);
+  if (keyword.length >= 50) return keyword;
+
+  const semantic = await semanticIds(db, term, userId, 20);
+  const missing = semantic.filter((id) => !keyword.some((k) => k.id === id));
+  if (missing.length === 0) return keyword;
+
+  let extraQ = db.from('saves').select(SAVE_SELECT).in('id', missing).is('deleted_at', null);
+  if (userId) extraQ = extraQ.eq('user_id', userId);
+  const { data: extra } = await extraQ;
+  // Re-sort by the RPC's ranking — `in` returns rows in table order, not
+  // relevance order.
+  const byRank = new Map(missing.map((id, i) => [id, i]));
+  const rest = (extra ?? [])
+    .map(serializeSave)
+    .sort((a, b) => (byRank.get(a.id) ?? 0) - (byRank.get(b.id) ?? 0));
+  return [...keyword, ...rest].slice(0, 50);
+}
+
+/**
+ * Nearest-neighbour save ids for a query string, best first. Empty when no
+ * Gemini key is configured or nothing has been embedded yet — every caller
+ * treats semantic results as a bonus on top of keyword matching.
+ */
+async function semanticIds(
+  db: SupabaseClient,
+  term: string,
+  userId: string | undefined,
+  limit: number,
+): Promise<string[]> {
+  // Cheap indexed count before an expensive embedding call: with nothing
+  // indexed, every search would otherwise pay a round trip to Gemini to find
+  // zero rows.
+  let probe = db.from('saves').select('id', { count: 'exact', head: true }).not('embedding', 'is', null);
+  if (userId) probe = probe.eq('user_id', userId);
+  const { count } = await probe;
+  if (!count) return [];
+
+  const vector = await embedText(term, await loadGeminiKey(db, userId));
+  if (!vector) return [];
+  const { data, error } = await db.rpc('match_saves', {
+    query_embedding: JSON.stringify(vector),
+    match_count: limit,
+  });
+  if (error) {
+    console.error('[search] match_saves failed', error.message);
+    return [];
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+}
+
+/**
+ * Saves closest in meaning to a given one. Empty when it has no embedding.
+ *
+ * Pass an RLS-scoped client only. match_saves runs as the caller, so the
+ * service-role client would happily return other users' saves — unlike
+ * searchSaves there is no userId parameter to fence it.
+ */
+export async function relatedSaves(db: SupabaseClient, saveId: string, limit = 4): Promise<Save[]> {
+  const { data: row } = await db.from('saves').select('embedding').eq('id', saveId).maybeSingle();
+  if (!row?.embedding) return [];
+  const { data, error } = await db.rpc('match_saves', {
+    query_embedding: row.embedding,
+    match_count: limit,
+    exclude_id: saveId,
+  });
+  if (error) throw new ApiError(500, error.message);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  if (ids.length === 0) return [];
+  const { data: rows } = await db.from('saves').select(SAVE_SELECT).in('id', ids);
+  const byRank = new Map(ids.map((id, i) => [id, i]));
+  return (rows ?? [])
+    .map(serializeSave)
+    .sort((a, b) => (byRank.get(a.id) ?? 0) - (byRank.get(b.id) ?? 0));
 }
 
 /** A user's tags with usage counts, most-used first. Shared by GET /tags and the grid. */

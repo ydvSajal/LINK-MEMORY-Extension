@@ -56,30 +56,39 @@ function buildModels(override?: AiOverride | null): { model: LanguageModel; name
  * Try each model (user override first, then env chain); fall through on
  * retriable errors. Non-retriable errors bubble up immediately.
  */
-export async function generateWithFallback<T>(opts: {
-  schema: z.ZodType<T>;
-  prompt: string;
-  system?: string;
-  override?: AiOverride | null;
-}): Promise<{ object: T; model: string }> {
-  const models = buildModels(opts.override);
+async function withFallback<T>(
+  override: AiOverride | null | undefined,
+  run: (model: LanguageModel, name: string) => Promise<T>,
+): Promise<T> {
+  const models = buildModels(override);
   if (models.length === 0) throw new Error('no AI models configured (AI_MODEL_* env or user settings)');
   let lastErr: unknown;
   for (const { model, name } of models) {
     try {
-      const { object } = await generateObject({
-        model,
-        schema: opts.schema,
-        system: opts.system,
-        prompt: opts.prompt,
-      });
-      return { object, model: name };
+      return await run(model, name);
     } catch (e) {
       lastErr = e;
       if (!isRetriable(e)) throw e;
     }
   }
   throw new Error(`all models in chain failed: ${(lastErr as Error)?.message ?? lastErr}`);
+}
+
+export function generateWithFallback<T>(opts: {
+  schema: z.ZodType<T>;
+  prompt: string;
+  system?: string;
+  override?: AiOverride | null;
+}): Promise<{ object: T; model: string }> {
+  return withFallback(opts.override, async (model, name) => {
+    const { object } = await generateObject({
+      model,
+      schema: opts.schema,
+      system: opts.system,
+      prompt: opts.prompt,
+    });
+    return { object, model: name };
+  });
 }
 
 /**
@@ -96,22 +105,13 @@ export async function testModel(override?: AiOverride | null): Promise<string> {
 }
 
 /** Plain-text generation with the same fallback chain (Telegram Q&A). */
-export async function generateTextWithFallback(opts: {
+export function generateTextWithFallback(opts: {
   prompt: string;
   system?: string;
   override?: AiOverride | null;
 }): Promise<string> {
-  const models = buildModels(opts.override);
-  if (models.length === 0) throw new Error('no AI models configured');
-  let lastErr: unknown;
-  for (const { model } of models) {
-    try {
-      const { text } = await generateText({ model, system: opts.system, prompt: opts.prompt });
-      return text;
-    } catch (e) {
-      lastErr = e;
-      if (!isRetriable(e)) throw e;
-    }
-  }
-  throw new Error(`all models in chain failed: ${(lastErr as Error)?.message ?? lastErr}`);
+  return withFallback(opts.override, async (model) => {
+    const { text } = await generateText({ model, system: opts.system, prompt: opts.prompt });
+    return text;
+  });
 }

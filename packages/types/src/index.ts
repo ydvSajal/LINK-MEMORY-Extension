@@ -6,30 +6,28 @@ export type ContentType = z.infer<typeof ContentType>;
 export const Source = z.enum(['extension', 'web', 'telegram']);
 export type Source = z.infer<typeof Source>;
 
-export const AiStatus = z.enum(['pending', 'done', 'failed', 'skipped']);
-export type AiStatus = z.infer<typeof AiStatus>;
+export type AiStatus = 'pending' | 'done' | 'failed' | 'skipped';
 
 /** A saved memory card — the one shape rendered everywhere. */
-export const SaveSchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  url: z.string().url(),
-  title: z.string(),
-  description: z.string(),
-  note: z.string(),
-  image_url: z.string().url().nullable(),
-  domain: z.string(),
-  content_type: ContentType,
-  source: Source,
-  ai_summary: z.string().nullable(),
-  ai_status: AiStatus,
-  created_at: z.string(),
-  updated_at: z.string(),
-  deleted_at: z.string().nullable().default(null),
-  pinned_at: z.string().nullable().default(null), // set = pinned above the feed
-  tags: z.array(z.string()).default([]),
-});
-export type Save = z.infer<typeof SaveSchema>;
+export type Save = {
+  id: string;
+  user_id: string;
+  url: string;
+  title: string;
+  description: string;
+  note: string;
+  image_url: string | null;
+  domain: string;
+  content_type: ContentType;
+  source: Source;
+  ai_summary: string | null;
+  ai_status: AiStatus;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  pinned_at: string | null; // set = pinned above the feed
+  tags: string[];
+};
 
 /** POST /saves body. Server derives domain/content_type when absent. */
 export const CreateSaveInput = z.object({
@@ -55,6 +53,16 @@ export const UpdateSaveInput = z.object({
 });
 export type UpdateSaveInput = z.infer<typeof UpdateSaveInput>;
 
+/**
+ * PATCH /saves body — one action across many cards. Exists so "select all,
+ * delete" is a single request instead of 50 that trip the rate limiter.
+ */
+export const BulkSaveInput = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(200),
+  action: z.enum(['pin', 'unpin', 'delete', 'restore', 'destroy']),
+});
+export type BulkSaveInput = z.infer<typeof BulkSaveInput>;
+
 /** AI enrichment output — zod-validated model JSON. */
 export const EnrichResult = z.object({
   summary: z.string(),
@@ -62,30 +70,10 @@ export const EnrichResult = z.object({
 });
 export type EnrichResult = z.infer<typeof EnrichResult>;
 
-export const TagCount = z.object({ name: z.string(), count: z.number().int() });
-export type TagCount = z.infer<typeof TagCount>;
+export type TagCount = { name: string; count: number };
 
 export const BillingCycle = z.enum(['monthly', 'yearly', 'weekly', 'once']);
 export type BillingCycle = z.infer<typeof BillingCycle>;
-
-export const SubscriptionStatus = z.enum(['active', 'cancelled']);
-export type SubscriptionStatus = z.infer<typeof SubscriptionStatus>;
-
-/** A tracked paid subscription. `end_date` is when it renews or runs out. */
-export const SubscriptionSchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  name: z.string(),
-  price: z.number().nullable(),
-  currency: z.string().nullable(),
-  billing_cycle: BillingCycle.nullable(),
-  end_date: z.string(),
-  notes: z.string(),
-  status: SubscriptionStatus,
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-export type Subscription = z.infer<typeof SubscriptionSchema>;
 
 /** What the model pulls out of a free-text Telegram message. */
 export const SubscriptionExtract = z.object({
@@ -105,8 +93,7 @@ export const CreateTodoInput = z.object({
 });
 export type CreateTodoInput = z.infer<typeof CreateTodoInput>;
 
-export const TodoStatus = z.enum(['todo', 'progress', 'done']);
-export type TodoStatus = z.infer<typeof TodoStatus>;
+export type TodoStatus = 'todo' | 'progress' | 'done';
 
 export type Todo = {
   id: string;

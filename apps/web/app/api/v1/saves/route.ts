@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth';
 import { rateLimit } from '@/lib/ratelimit';
 import { json, handleError, parseJson, domainFromUrl, guessContentType, attachTags, serializeSave, querySaves, SAVE_SELECT } from '@/lib/api';
 import { triggerEnrich } from '@/lib/ai/trigger';
-import { CreateSaveInput } from '@recall/types';
+import { BulkSaveInput, CreateSaveInput } from '@recall/types';
 
 export const runtime = 'nodejs';
 
@@ -55,6 +55,35 @@ export async function POST(req: Request) {
 
     const { data: full } = await db.from('saves').select(SAVE_SELECT).eq('id', created.id).single();
     return json(serializeSave(full ?? created), 201);
+  } catch (e) {
+    return handleError(e);
+  }
+}
+
+// PATCH /api/v1/saves — apply one action to many cards in a single request.
+// RLS scopes the `in` filter, so ids the caller doesn't own are simply no-ops.
+export async function PATCH(req: Request) {
+  try {
+    const { user, db } = await requireUser(req);
+    rateLimit(user.id);
+    const { ids, action } = BulkSaveInput.parse(await parseJson(req));
+
+    if (action === 'destroy') {
+      const { error } = await db.from('saves').delete().in('id', ids);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, count: ids.length });
+    }
+
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = { updated_at: now };
+    if (action === 'pin') patch.pinned_at = now;
+    if (action === 'unpin') patch.pinned_at = null;
+    if (action === 'delete') patch.deleted_at = now;
+    if (action === 'restore') patch.deleted_at = null;
+
+    const { error } = await db.from('saves').update(patch).in('id', ids);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true, count: ids.length });
   } catch (e) {
     return handleError(e);
   }

@@ -7,7 +7,14 @@ import type { TagCount } from '@recall/types';
 export const TYPES = ['link', 'article', 'video', 'tweet', 'text'] as const;
 export const SOURCES = ['extension', 'web', 'telegram'] as const;
 
-export type BoardFilters = { tag: string | null; type: string | null; source: string | null; bin?: boolean };
+/** The board's filter state. Also what Topbar/Sidebar highlight against. */
+export type BoardFilters = {
+  tag: string | null;
+  type: string | null;
+  source: string | null;
+  q: string;
+  bin: boolean;
+};
 
 function Item({
   href,

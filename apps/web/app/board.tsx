@@ -5,10 +5,8 @@ import { useRouter } from 'next/navigation';
 import { RecallClient } from '@recall/api-client';
 import type { Save, TagCount } from '@recall/types';
 import { browserClient } from '@/lib/supabase/client';
-import Sidebar, { TYPES, SOURCES } from './sidebar';
+import Sidebar, { TYPES, SOURCES, type BoardFilters as Filters } from './sidebar';
 import Topbar from './topbar';
-
-type Filters = { tag: string | null; type: string | null; source: string | null; q: string; bin: boolean };
 
 const BIN_DAYS = 2;
 
@@ -293,7 +291,7 @@ export default function Board({
     const prev = items;
     setItems((p) => p.filter((i) => i.id !== id));
     try {
-      await client.restoreSave(id);
+      await client.updateSave(id, { restore: true });
     } catch {
       setItems(prev);
     }
@@ -307,6 +305,65 @@ export default function Board({
       await client.deleteSave(id, { hard: true });
     } catch {
       setItems(prev);
+    }
+  };
+
+  // ── Bulk selection ──
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const lastPicked = useRef<number | null>(null);
+
+  const togglePick = (index: number, shiftKey: boolean) => {
+    const anchor = lastPicked.current;
+    setPicked((prev) => {
+      const next = new Set(prev);
+      const on = !next.has(items[index].id);
+      // Shift extends from the last click, matching every file manager.
+      const range =
+        shiftKey && anchor !== null
+          ? items.slice(Math.min(anchor, index), Math.max(anchor, index) + 1)
+          : [items[index]];
+      for (const s of range) (on ? next.add(s.id) : next.delete(s.id));
+      return next;
+    });
+    lastPicked.current = index;
+  };
+
+  const clearPicked = useCallback(() => {
+    setPicked(new Set());
+    lastPicked.current = null;
+  }, []);
+
+  // ESC drops the selection — the action bar is otherwise mouse-only to dismiss.
+  useEffect(() => {
+    if (picked.size === 0) return;
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && clearPicked();
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [picked.size, clearPicked]);
+
+  const bulk = async (action: 'pin' | 'unpin' | 'delete' | 'restore' | 'destroy') => {
+    const ids = items.filter((i) => picked.has(i.id)).map((i) => i.id);
+    if (ids.length === 0) return;
+    if (action === 'destroy' && !window.confirm(`Delete ${ids.length} cards forever? This cannot be undone.`))
+      return;
+
+    const prev = items;
+    const gone = action === 'delete' || action === 'restore' || action === 'destroy';
+    setItems((p) =>
+      gone
+        ? p.filter((i) => !picked.has(i.id))
+        : sortPinned(
+            p.map((i) =>
+              picked.has(i.id) ? { ...i, pinned_at: action === 'pin' ? new Date().toISOString() : null } : i,
+            ),
+          ),
+    );
+    clearPicked();
+    try {
+      await client.bulkSaves({ ids, action });
+    } catch {
+      setItems(prev);
+      setError('Bulk action failed.');
     }
   };
 
@@ -410,13 +467,20 @@ export default function Board({
               />
             ) : (
               <div className={CONTAINERS[view]}>
-                {items.map((s) => (
+                {items.map((s, i) => (
                   <Card
                     key={s.id}
                     save={s}
                     view={view}
                     bin={filters.bin}
-                    onClick={() => !filters.bin && setSelected(s)}
+                    picked={picked.has(s.id)}
+                    // While a selection is active, a plain click extends it
+                    // instead of opening the sheet — otherwise every miss-click
+                    // buries the toolbar under a modal.
+                    onClick={(e) =>
+                      picked.size > 0 ? togglePick(i, e.shiftKey) : !filters.bin && setSelected(s)
+                    }
+                    onPickToggle={(e) => togglePick(i, e.shiftKey)}
                     onPin={() => togglePin(s)}
                     onDelete={() => softDelete(s.id)}
                     onRestore={() => restore(s.id)}
@@ -434,6 +498,43 @@ export default function Board({
             )}
           </div>
         </main>
+
+        {picked.size > 0 && (
+          <div className="pointer-events-none fixed inset-x-0 bottom-16 z-30 flex justify-center px-4 lg:bottom-6">
+            <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-white/[.12] bg-shell/90 px-3 py-2 shadow-2xl backdrop-blur-xl">
+              <span className="px-1 text-sm font-medium text-neutral-200">{picked.size} selected</span>
+              <button
+                onClick={() => setPicked(new Set(items.map((i) => i.id)))}
+                className="rounded-lg px-2.5 py-1.5 text-sm text-neutral-400 hover:bg-white/[.06] hover:text-neutral-100"
+              >
+                All
+              </button>
+              {filters.bin ? (
+                <>
+                  <BarButton onClick={() => bulk('restore')}>Restore</BarButton>
+                  <BarButton onClick={() => bulk('destroy')} danger>
+                    Delete forever
+                  </BarButton>
+                </>
+              ) : (
+                <>
+                  <BarButton onClick={() => bulk('pin')}>Pin</BarButton>
+                  <BarButton onClick={() => bulk('unpin')}>Unpin</BarButton>
+                  <BarButton onClick={() => bulk('delete')} danger>
+                    Move to bin
+                  </BarButton>
+                </>
+              )}
+              <button
+                onClick={clearPicked}
+                aria-label="Clear selection"
+                className="rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:text-neutral-200"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Filter Bottom Sheet */}
         {filterSheetOpen && (
@@ -518,10 +619,24 @@ export default function Board({
               setItems((prev) => prev.filter((i) => i.id !== id));
               setSelected(null);
             }}
+            onPick={setSelected}
           />
         )}
       </div>
     </div>
+  );
+}
+
+function BarButton({ onClick, danger, children }: { onClick: () => void; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+        danger ? 'text-red-400 hover:bg-red-950/40' : 'text-neutral-300 hover:bg-white/[.06] hover:text-neutral-50'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -610,12 +725,40 @@ function BinActions({ save, onRestore, onDestroy }: { save: Save; onRestore: () 
 type CardProps = {
   save: Save;
   bin: boolean;
-  onClick: () => void;
+  picked: boolean;
+  onClick: (e: { shiftKey: boolean }) => void;
+  onPickToggle: (e: { shiftKey: boolean }) => void;
   onPin: () => void;
   onDelete: () => void;
   onRestore: () => void;
   onDestroy: () => void;
 };
+
+/** Selection checkbox. Hover-only until something is picked, then always on. */
+function PickBox({ picked, onToggle, className = '' }: { picked: boolean; onToggle: CardProps['onPickToggle']; className?: string }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(e);
+      }}
+      role="checkbox"
+      aria-checked={picked}
+      aria-label={picked ? 'Deselect' : 'Select'}
+      title="Select — shift-click for a range"
+      className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] transition-opacity ${
+        picked
+          ? 'border-neutral-100 bg-neutral-100 text-neutral-900'
+          : 'border-white/[.25] text-transparent lg:opacity-0 lg:group-hover:opacity-100'
+      } ${className}`}
+    >
+      ✓
+    </button>
+  );
+}
+
+/** Ring + tint so a picked card reads as picked in every layout. */
+const pickedRing = (picked: boolean) => (picked ? 'ring-2 ring-neutral-100 ring-offset-2 ring-offset-shell' : '');
 
 function Card(props: CardProps & { view: View }) {
   if (props.view === 'list') return <ListCard {...props} />;
@@ -624,16 +767,16 @@ function Card(props: CardProps & { view: View }) {
   return <MasonryCard {...props} />;
 }
 
-function MasonryCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
+function MasonryCard({ save, bin, picked, onClick, onPickToggle, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      onKeyDown={(e) => e.key === 'Enter' && onClick(e)}
       className={`group mb-3 flex w-full break-inside-avoid flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-white/[.16] ${
         save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
-      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
+      } ${pickedRing(picked)} ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       {save.image_url && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -647,6 +790,7 @@ function MasonryCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy
       )}
       <div className="flex flex-col gap-1.5 p-3">
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <PickBox picked={picked} onToggle={onPickToggle} />
           <Favicon domain={save.domain} />
           <span className="truncate">{save.domain}</span>
           <span className="ml-auto text-neutral-700">{age(save.created_at)}</span>
@@ -692,18 +836,19 @@ function MasonryCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy
 }
 
 /** Compact row: small thumbnail, one-line title, meta on the side. */
-function ListCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
+function ListCard({ save, bin, picked, onClick, onPickToggle, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      onKeyDown={(e) => e.key === 'Enter' && onClick(e)}
       className={`group flex w-full flex-col rounded-lg border bg-card px-2.5 py-2 text-left transition-colors hover:border-white/[.16] ${
         save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
-      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
+      } ${pickedRing(picked)} ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       <div className="flex items-center gap-3">
+        <PickBox picked={picked} onToggle={onPickToggle} />
         <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md bg-white/[.04]">
           {save.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -753,16 +898,16 @@ function ListCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }:
 }
 
 /** Square tile: image fills it, title sits on a gradient at the bottom. */
-function GridCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
+function GridCard({ save, bin, picked, onClick, onPickToggle, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      onKeyDown={(e) => e.key === 'Enter' && onClick(e)}
       className={`group flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-white/[.16] ${
         save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
-      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
+      } ${pickedRing(picked)} ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       {/* The title sits on the gradient whether or not there's an image — an
           image that 404s hides itself and would otherwise leave a blank tile. */}
@@ -782,9 +927,10 @@ function GridCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }:
             {save.title || save.url}
           </div>
         </div>
+        <PickBox picked={picked} onToggle={onPickToggle} className="absolute left-1.5 top-1.5 bg-black/50" />
         {!bin && (
           <>
-            <PinButton save={save} onPin={onPin} className="absolute left-1 top-1 rounded-md bg-black/50 p-1" />
+            <PinButton save={save} onPin={onPin} className="absolute left-7 top-1 rounded-md bg-black/50 p-1" />
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -814,18 +960,19 @@ function GridCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }:
 }
 
 /** Text-only cube: the most cards per screen, no images at all. */
-function DenseCard({ save, bin, onClick, onPin, onDelete, onRestore, onDestroy }: CardProps) {
+function DenseCard({ save, bin, picked, onClick, onPickToggle, onPin, onDelete, onRestore, onDestroy }: CardProps) {
   return (
     <div
       role={bin ? undefined : 'button'}
       tabIndex={bin ? undefined : 0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      onKeyDown={(e) => e.key === 'Enter' && onClick(e)}
       className={`group flex flex-col rounded-lg border bg-card p-2 text-left transition-colors hover:border-white/[.16] ${
         save.pinned_at ? 'border-amber-400/30' : 'border-white/[.07]'
-      } ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
+      } ${pickedRing(picked)} ${bin ? '' : 'cursor-pointer hover:bg-card-hover'}`}
     >
       <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
+        <PickBox picked={picked} onToggle={onPickToggle} />
         <Favicon domain={save.domain} size={11} />
         <span className="truncate">{save.domain}</span>
         {!bin && <PinButton save={save} onPin={onPin} className="-m-1 ml-auto p-1" />}
@@ -883,23 +1030,68 @@ function EmptyState({ searching, filtered, bin }: { searching: boolean; filtered
   );
 }
 
+/** Semantically nearest saves. Renders nothing until embeddings exist. */
+function Related({ client, saveId, onPick }: { client: RecallClient; saveId: string; onPick: (s: Save) => void }) {
+  const [items, setItems] = useState<Save[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    setItems([]);
+    client
+      .relatedSaves(saveId)
+      .then((r) => live && setItems(r.items))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client, saveId]);
+
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-6 border-t border-white/[.07] pt-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Related</div>
+      <div className="mt-2 flex flex-col gap-1">
+        {items.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onPick(s)}
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[.04]"
+          >
+            <Favicon domain={s.domain} size={14} />
+            <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-300">{s.title || s.url}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Sheet({
   client,
   save,
   onClose,
   onSaved,
   onDeleted,
+  onPick,
 }: {
   client: RecallClient;
   save: Save;
   onClose: () => void;
   onSaved: (s: Save) => void;
   onDeleted: (id: string) => void;
+  onPick: (s: Save) => void;
 }) {
   const [note, setNote] = useState(save.note);
   const [tags, setTags] = useState(save.tags.join(', '));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  // A related-save click swaps the sheet's subject; reset the edit fields to it.
+  useEffect(() => {
+    setNote(save.note);
+    setTags(save.tags.join(', '));
+    setErr('');
+  }, [save.id, save.note, save.tags]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -991,6 +1183,8 @@ function Sheet({
         />
 
         {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
+
+        <Related client={client} saveId={save.id} onPick={onPick} />
 
         <div className="mt-5 flex items-center gap-2">
           <button

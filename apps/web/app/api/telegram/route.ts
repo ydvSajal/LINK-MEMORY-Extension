@@ -4,6 +4,7 @@ import { domainFromUrl, guessContentType, attachTags, searchSaves } from '@/lib/
 import { enrich } from '@/lib/ai/enrich';
 import { generateTextWithFallback, generateWithFallback } from '@/lib/ai/provider';
 import { loadAiOverride, loadFirecrawlKey } from '@/lib/ai/settings';
+import { isoDate, CURRENCY_SYMBOL } from '@/lib/util';
 import { SubscriptionExtract } from '@recall/types';
 
 export const runtime = 'nodejs';
@@ -30,6 +31,9 @@ const HELP =
   '• Type a task ("buy milk tomorrow", "remind me to pay rent 2026-08-01") to add a to-do\n' +
   '• Name a subscription ("netflix ends 5th august 499rs monthly") to track it\n' +
   '• Ask anything in plain text to search your saves\n' +
+  '• /chat <question> — ask me anything, general knowledge, no library lookup\n' +
+  '• /mode chat — make plain messages a normal conversation (/mode recall to switch back)\n' +
+  '• /reset — forget the conversation so far\n' +
   '• /recent — last 5 saves\n' +
   '• /search <words> — keyword search\n' +
   '• /todo <task> [YYYY-MM-DD] — add a to-do (date → daily reminder)\n' +
@@ -45,13 +49,11 @@ const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frida
 // stripped from the task text.
 // ponytail: dates are computed in the server's timezone — swap in the user's tz if that ever bites.
 function parseTodo(raw: string): { text: string; due: string | null } {
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const now = new Date();
   let due: string | null = null;
   let text = raw;
   const take = (matched: string, d: Date | string) => {
-    due = typeof d === 'string' ? d : iso(d);
+    due = typeof d === 'string' ? d : isoDate(d);
     text = raw.replace(matched, ' ');
   };
 
@@ -63,7 +65,7 @@ function parseTodo(raw: string): { text: string; due: string | null } {
   } else if ((m = raw.match(/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/i))) {
     // bare ordinal → this month, or next month if that day already passed
     let d = new Date(now.getFullYear(), now.getMonth(), +m[1]);
-    if (iso(d) < iso(now)) d = new Date(now.getFullYear(), now.getMonth() + 1, +m[1]);
+    if (isoDate(d) < isoDate(now)) d = new Date(now.getFullYear(), now.getMonth() + 1, +m[1]);
     take(m[0], d);
   } else if ((m = raw.match(/\bin\s+(\d+)\s+days?\b/i))) {
     take(m[0], new Date(now.getFullYear(), now.getMonth(), now.getDate() + +m[1]));
@@ -114,7 +116,35 @@ async function classifyIntent(
   }
 }
 
-const CURRENCY_SYMBOL: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£', JPY: '¥' };
+/** How many messages of back-and-forth chat mode remembers (user + bot turns). */
+const HISTORY_TURNS = 10;
+
+type Turn = { role: 'user' | 'assistant'; content: string };
+
+const CHAT_SYSTEM =
+  'You are Recall, a helpful assistant reached through Telegram. Answer the question directly and ' +
+  'conversationally. Keep it short unless detail is asked for — this is a chat window, not a document. ' +
+  'Plain text only: no markdown, no bullet syntax, no code fences. ' +
+  'You are not restricted to the user\'s saved links here; answer from general knowledge. ' +
+  'If you do not know something, say so.';
+
+/**
+ * General-purpose conversation, no library context. Prior turns are folded into
+ * the prompt because the fallback chain only takes system+prompt — good enough
+ * for a handful of turns, swap to a real messages array if this ever grows.
+ */
+async function chatReply(
+  text: string,
+  history: Turn[],
+  override: Awaited<ReturnType<typeof loadAiOverride>>,
+): Promise<string> {
+  const transcript = history.map((t) => `${t.role === 'user' ? 'User' : 'You'}: ${t.content}`).join('\n');
+  return generateTextWithFallback({
+    system: CHAT_SYSTEM,
+    prompt: transcript ? `${transcript}\nUser: ${text}\nYou:` : text,
+    override,
+  });
+}
 
 const describeSub = (s: {
   name: string;
@@ -152,7 +182,7 @@ export async function POST(req: Request) {
 
   const { data: linked } = await db
     .from('user_settings')
-    .select('user_id')
+    .select('user_id, telegram_mode, telegram_history')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
 
@@ -179,6 +209,59 @@ export async function POST(req: Request) {
 
       if (!linked) return void (await send(BOT, chatId, 'Not linked yet. On the site: Settings → Telegram → copy the code, then send /link <code> here.'));
       const userId = linked.user_id;
+      const mode: 'recall' | 'chat' = linked.telegram_mode === 'chat' ? 'chat' : 'recall';
+      const history = (Array.isArray(linked.telegram_history) ? linked.telegram_history : []) as Turn[];
+
+      /** Append this exchange to the rolling window. */
+      const remember = async (userText: string, reply: string) => {
+        const next = [...history, { role: 'user', content: userText }, { role: 'assistant', content: reply }].slice(
+          -HISTORY_TURNS,
+        );
+        await db
+          .from('user_settings')
+          .update({ telegram_history: next, updated_at: new Date().toISOString() })
+          .eq('user_id', userId);
+      };
+
+      if (text.startsWith('/mode')) {
+        const want = text.split(/\s+/)[1]?.toLowerCase();
+        if (want !== 'chat' && want !== 'recall')
+          return void (await send(
+            BOT,
+            chatId,
+            `Currently in ${mode} mode.\n\n` +
+              'recall — plain messages become to-dos, subscriptions, or a search of your saves\n' +
+              'chat — plain messages are a normal conversation\n\n' +
+              'Switch with /mode chat or /mode recall. Links and commands work in both.',
+          ));
+        await db
+          .from('user_settings')
+          .update({ telegram_mode: want, updated_at: new Date().toISOString() })
+          .eq('user_id', userId);
+        return void (await send(
+          BOT,
+          chatId,
+          want === 'chat'
+            ? 'Chat mode on — ask me anything. Links still get saved, commands still work. /mode recall to switch back.'
+            : 'Recall mode on — plain messages go back to to-dos, subscriptions and searching your saves.',
+        ));
+      }
+
+      if (text.startsWith('/reset')) {
+        await db
+          .from('user_settings')
+          .update({ telegram_history: [], updated_at: new Date().toISOString() })
+          .eq('user_id', userId);
+        return void (await send(BOT, chatId, 'Forgotten. Clean slate.'));
+      }
+
+      if (text.startsWith('/chat')) {
+        const q = text.replace(/^\/chat\s*/, '').trim();
+        if (!q) return void (await send(BOT, chatId, 'Usage: /chat <question> — or /mode chat to keep chatting.'));
+        const answer = await chatReply(q, history, await loadAiOverride(db, userId));
+        await send(BOT, chatId, answer.slice(0, 4000));
+        return void (await remember(q, answer));
+      }
 
       // Link in the message → save it.
       const urlMatch = text.match(/https?:\/\/\S+/);
@@ -213,7 +296,7 @@ export async function POST(req: Request) {
         await send(BOT, chatId, 'Saved. Summarizing…');
         try {
           const { data: tagRows } = await db.from('tags').select('name').eq('user_id', userId);
-          const { object } = await enrich({
+          const { object, embedding } = await enrich({
             title: '',
             description: '',
             note,
@@ -224,7 +307,12 @@ export async function POST(req: Request) {
           });
           await db
             .from('saves')
-            .update({ ai_summary: object.summary, ai_status: 'done', updated_at: new Date().toISOString() })
+            .update({
+              ai_summary: object.summary,
+              ai_status: 'done',
+              embedding,
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', created.id);
           await attachTags(db, userId, created.id, object.tags);
           await send(BOT, chatId, `${object.summary}\n\nTags: ${object.tags.join(', ')}`);
@@ -315,13 +403,21 @@ export async function POST(req: Request) {
         );
       }
 
-      // Plain text: a to-do, a subscription, or a question about the library.
       const aiOverride = await loadAiOverride(db, userId);
+
+      // Chat mode: plain text is just a conversation. Everything above this line
+      // (links, /todo, /subs, …) already ran, so the bot half keeps working.
+      if (mode === 'chat') {
+        const answer = await chatReply(text, history, aiOverride);
+        await send(BOT, chatId, answer.slice(0, 4000));
+        return void (await remember(text, answer));
+      }
+
+      // Recall mode: a to-do, a subscription, or a question about the library.
       const intent = await classifyIntent(text, aiOverride);
 
       if (intent === 'subscription') {
-        const today = new Date();
-        const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const todayIso = isoDate(new Date());
         try {
           const { object } = await generateWithFallback({
             schema: SubscriptionExtract,

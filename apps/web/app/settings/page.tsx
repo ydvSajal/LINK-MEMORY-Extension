@@ -233,6 +233,71 @@ function FirecrawlCard({ hasKey, authed, onSaved }: { hasKey: boolean; authed: A
   );
 }
 
+/**
+ * Backfill embeddings for saves made before semantic search existed. Loops the
+ * batch endpoint until it reports nothing left — one long request would blow
+ * past the function timeout on a big library.
+ */
+function SmartSearchCard({ hasGeminiKey, authed }: { hasGeminiKey: boolean; authed: Authed }) {
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    authed('/embeddings')
+      .then((d) => setRemaining((d as { remaining: number }).remaining))
+      .catch(() => {});
+  }, [authed]);
+
+  const index = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      for (;;) {
+        const d = (await authed('/embeddings', { method: 'POST', body: '{}' })) as {
+          indexed: number;
+          remaining: number;
+        };
+        setRemaining(d.remaining);
+        if (d.remaining === 0 || d.indexed === 0) break;
+      }
+      setMsg('Indexed. Search now understands meaning, not just keywords.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mt-6 rounded-xl border border-white/[.07] bg-card p-5">
+      <div className="flex items-center gap-2">
+        <h2 className="font-medium">Smart search</h2>
+        <span className="rounded-full border border-white/[.10] px-2 py-0.5 text-xs text-neutral-400">Embeddings</span>
+      </div>
+      <p className="mt-1 text-sm text-neutral-500">
+        Finds saves by meaning, so &ldquo;that piece about rate limiting&rdquo; works even when the page never uses
+        those words. New saves are indexed automatically; anything saved earlier needs one pass. Uses your Gemini key.
+      </p>
+
+      {!hasGeminiKey && (
+        <p className="mt-3 text-sm text-amber-400">Add a Gemini API key above first — embeddings need one.</p>
+      )}
+      {remaining === 0 && <p className="mt-3 text-sm text-emerald-400">Everything is indexed.</p>}
+      {remaining !== null && remaining > 0 && (
+        <button
+          onClick={index}
+          disabled={busy || !hasGeminiKey}
+          className="mt-3 rounded-lg bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
+        >
+          {busy ? `Indexing… ${remaining} left` : `Index ${remaining} save${remaining === 1 ? '' : 's'}`}
+        </button>
+      )}
+      {msg && <p className="mt-2 text-sm text-neutral-400">{msg}</p>}
+    </section>
+  );
+}
+
 // VAPID public keys are base64url; PushManager wants raw bytes.
 function urlBase64ToUint8Array(base64: string) {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
@@ -465,6 +530,8 @@ export default function SettingsPage() {
         authed={authed}
         onSaved={() => setS((prev) => (prev ? { ...prev, has_firecrawl_key: true } : prev))}
       />
+
+      <SmartSearchCard hasGeminiKey={s.has_gemini_key} authed={authed} />
 
       <NotificationsCard />
 
